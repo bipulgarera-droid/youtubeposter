@@ -1,0 +1,49 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# Temporary files
+.tmp/
+*.tmp
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials (keep in .env instead)
+credentials.json
+token.json
+token.pickle
+client_secrets.json
+
+# Data files (regenerated)
+data.json
+
+# Large files
+*.mp4
+*.wav
+*.mp3
+
+# Gemini artifacts
+.gemini/

@@ -1,0 +1,16 @@
+{
+  "name": "youtube-niche-verifier",
+  "version": "1.0.0",
+  "description": "Screenshot capture and highlighting tool for YouTube content repurposing",
+  "main": "execution/capture_screenshots.js",
+  "scripts": {
+    "screenshots": "node execution/capture_screenshots.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.7.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "author": "",
+  "license": "ISC"
+}

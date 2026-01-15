@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Niche Verifier</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🎬</span>
+                <span class="logo-text">YouTube Niche Verifier</span>
+            </div>
+            <nav class="tabs-container">
+                <div class="tabs tabs-row-1">
+                    <button class="tab active" data-step="1">Discovery</button>
+                    <button class="tab" data-step="2">Saved</button>
+                    <button class="tab" data-step="3">Transcription</button>
+                    <button class="tab" data-step="4">News Research</button>
+                    <button class="tab" data-step="5">Script</button>
+                    <button class="tab" data-step="6">Screenshots</button>
+                    <button class="tab" data-step="7">Video</button>
+                </div>
+                <div class="tabs tabs-row-2">
+                    <button class="tab" data-step="8">🎨 Thumbnail</button>
+                    <button class="tab" data-step="9">✍️ Title</button>
+                    <button class="tab" data-step="10">🔍 Keywords</button>
+                    <button class="tab" data-step="11">📋 More Info</button>
+                    <button class="tab" data-step="12">📤 Post</button>
+                </div>
+            </nav>
+            <div class="header-actions">
+                <div class="project-selector">
+                    <select id="project-select" onchange="selectProject(this.value)">
+                        <option value="">Select Project</option>
+                    </select>
+                    <button class="btn-new-project" onclick="showNewProjectModal()">+ New</button>
+                </div>
+                <button class="btn-secondary" onclick="saveProgress()" style="font-size: 13px;">💾 Save</button>
+                <button class="btn-secondary" onclick="loadProgress()" style="font-size: 13px;">📂 Load</button>
+                <button class="btn-reset" onclick="resetApp()">Reset</button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Step 1: Discovery -->
+            <section class="step step-1 active" id="step-1">
+                <div class="step-header">
+                    <h2>🔍 Video Discovery</h2>
+                    <p>Search for high-performing videos in your niche</p>
+                </div>
+
+                <div class="search-form">
+                    <div class="form-group">
+                        <label for="query">Search Query (Niche + Subtopic)</label>
+                        <input type="text" id="query" placeholder="e.g., Venezuela finance impact">
+                    </div>
+                    <div class="search-options">
+                        <div class="form-group">
+                            <label for="multiplier">View/Sub Multiplier</label>
+                            <input type="number" id="multiplier" value="1.5" step="0.1" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="past-days">Past Days</label>
+                            <input type="number" id="past-days" value="30" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="min-views">Min Views</label>
+                            <input type="number" id="min-views" value="1000" min="0" step="1000">
+                        </div>
+                        <div class="form-group">
+                            <label for="min-duration">Min Mins</label>
+                            <input type="number" id="min-duration" value="0" min="0" step="0.5">
+                        </div>
+                        <div class="form-group">
+                            <label for="max-results">Max Results</label>
+                            <input type="number" id="max-results" value="20" min="1">
+                        </div>
+                    </div>
+                    <button class="btn-primary" onclick="discoverVideos()">
+                        <span class="btn-icon">🔎</span> Search Videos
+                    </button>
+                </div>
+
+                <div class="results-container" id="videos-container">
+                    <div class="empty-state">
+                        <span class="empty-icon">📹</span>
+                        <p>Enter your search criteria and click "Search Videos"</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 2: Saved Videos -->
+            <section class="step step-2" id="step-2">
+                <div class="step-header">
+                    <h2>💾 Saved Videos</h2>
+                    <p>Videos saved for script generation</p>
+                </div>
+
+                <div class="workflow-actions" id="workflow-actions" style="display: none;">
+                    <p class="selected-count"><span id="selected-count">0</span> videos selected</p>
+                    <div class="workflow-buttons">
+                        <button class="btn-primary" onclick="runWorkflow('manual')">
+                            <span class="btn-icon">👤</span> Human in Loop
+                        </button>
+                        <button class="btn-primary btn-auto" onclick="runWorkflow('auto')">
+                            <span class="btn-icon">🤖</span> Automatic Pipeline
+                        </button>
+                    </div>
+                </div>
+
+                <div class="results-container" id="saved-videos-container">
+                    <div class="empty-state">
+                        <span class="empty-icon">💾</span>
+                        <p>No saved videos yet. Save videos from Discovery.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 3: Transcription -->
+            <section class="step step-3" id="step-3">
+                <div class="step-header">
+                    <h2>📝 Video Transcription</h2>
+                    <p>Transcribe the selected reference videos</p>
+                </div>
+
+                <!-- Manual URL Input (NEW) -->
+                <div class="manual-url-section"
+                    style="margin-bottom: 24px; padding: 20px; background: var(--bg-secondary); border-radius: 12px; border: 1px solid var(--border-color);">
+                    <h4 style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <span>🔗</span> Transcribe by URL
+                    </h4>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <input type="text" id="manual-url-input" placeholder="Paste YouTube video URL here..."
+                            style="flex: 1; padding: 12px 14px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                        <button class="btn-primary" onclick="transcribeManualUrl()" id="btn-transcribe-url">
+                            <span class="btn-icon">📝</span> Transcribe
+                        </button>
+                    </div>
+                    <p style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+                        Works with YouTube videos that have captions/subtitles available.
+                    </p>
+                </div>
+
+                <div class="selected-video" id="selected-video-info">
+                    <div class="empty-state">
+                        <span class="empty-icon">⬅️</span>
+                        <p>Select videos from the Saved tab first</p>
+                    </div>
+                </div>
+
+                <div class="transcript-container" id="transcript-container">
+                </div>
+            </section>
+
+            <!-- Step 4: News Research -->
+            <section class="step step-4" id="step-4">
+                <div class="step-header">
+                    <h2>📰 News Research</h2>
+                    <p>Search for latest news by topic or from your transcript</p>
+                </div>
+
+                <!-- Topic-based Search (NEW) -->
+                <div id="news-topic-search" class="search-form" style="margin-bottom: 20px;">
+                    <h4 style="margin-bottom: 12px;">🔍 Search by Topic (No Transcript Needed)</h4>
+                    <div style="margin-bottom: 12px;">
+                        <label for="news-topic-input"
+                            style="font-weight: 600; display: block; margin-bottom: 8px;">Enter Topic:</label>
+                        <input type="text" id="news-topic-input"
+                            placeholder="e.g., China tariffs 2026, US inflation, Bitcoin ETF"
+                            style="width: 100%; padding: 12px 14px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <label for="days-limit-select" style="font-weight: 600; display: block; margin-bottom: 8px;">🕒
+                            News Recency Limit</label>
+                        <select id="days-limit-select"
+                            style="width: 100%; padding: 10px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                            <option value="1">Last 24 Hours</option>
+                            <option value="3" selected>Last 3 Days (Strict)</option>
+                            <option value="7">Last 7 Days (Default)</option>
+                            <option value="30">Last 30 Days</option>
+                        </select>
+                    </div>
+                    <button class="btn-primary" onclick="searchNewsByTopic()" id="btn-search-topic">
+                        <span class="btn-icon">🔎</span> Search News by Topic
+                    </button>
+                </div>
+
+                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                <!-- Transcript-based Search (OLD) -->
+                <div id="news-data-preview" class="search-form">
+                    <h4 style="margin-bottom: 12px;">📝 Or Search from Transcript</h4>
+                    <div style="margin-bottom: 16px;">
+                        <p style="color: var(--text-secondary); font-size: 13px;" id="news-transcript-info">
+                            Waiting for transcript...
+                        </p>
+                    </div>
+                    <button class="btn-secondary" onclick="searchNewsFromTranscript()" id="btn-search-news">
+                        <span class="btn-icon">🔍</span> Search News from Transcript
+                    </button>
+                </div>
+
+                <div class="results-container" id="articles-container">
+                    <div class="empty-state">
+                        <span class="empty-icon">📰</span>
+                        <p>Click the button above to search for related news</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 5: Script Generation -->
+            <section class="step step-5" id="step-5">
+                <div class="step-header">
+                    <h2>✍️ Script Generation</h2>
+                    <p>Generate a video script using transcript + news articles (custom length)</p>
+                </div>
+
+                <!-- Data from previous steps -->
+                <div id="script-data-preview" class="search-form">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <p style="font-weight: 600; margin-bottom: 4px;">📝 Transcript</p>
+                            <p style="color: var(--text-secondary); font-size: 13px;" id="script-transcript-info">Not
+                                loaded</p>
+                        </div>
+                        <div>
+                            <p style="font-weight: 600; margin-bottom: 4px;">📰 News Articles</p>
+                            <p style="color: var(--text-secondary); font-size: 13px;" id="script-articles-info">Not
+                                loaded</p>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 16px;">
+                        <label for="word-count-select" style="font-weight: 600; display: block; margin-bottom: 8px;">📏
+                            Target Word Count</label>
+                        <select id="word-count-select"
+                            style="width: 100%; padding: 10px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                            <option value="1000">1,000 words (~4 min video)</option>
+                            <option value="2000">2,000 words (~8 min video)</option>
+                            <option value="3000">3,000 words (~12 min video)</option>
+                            <option value="4000" selected>4,000 words (~16 min video)</option>
+                            <option value="5000">5,000 words (~20 min video)</option>
+                            <option value="6000">6,000 words (~24 min video)</option>
+                            <option value="7000">7,000 words (~28 min video)</option>
+                            <option value="8000">8,000 words (~32 min video)</option>
+                            <option value="9000">9,000 words (~36 min video)</option>
+                            <option value="10000">10,000 words (~40 min video)</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 16px;">
+                        <label for="script-mode-select" style="font-weight: 600; display: block; margin-bottom: 8px;">🧠
+                            Script Generation Mode</label>
+                        <select id="script-mode-select"
+                            style="width: 100%; padding: 10px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                            <option value="original">Original (Topic Research)</option>
+                            <option value="transcript_refined">Transcript Refined (Improve Reference by 30%)</option>
+                            <option value="news_based">News Based (Breaking News Focus)</option>
+                        </select>
+                        <p id="reference-video-indicator"
+                            style="font-size: 12px; color: var(--accent); margin-top: 4px; display: none;">
+                            🎥 Reference: <span id="reference-video-title">None</span>
+                        </p>
+                    </div>
+
+                    <div style="margin-bottom: 16px;">
+                        <label for="channel-focus-input"
+                            style="font-weight: 600; display: block; margin-bottom: 8px;">🎯
+                            Channel Focus / Angle (Optional)</label>
+                        <input type="text" id="channel-focus-input"
+                            placeholder="e.g., Finance & Investment, Geopolitics, Tech Analysis..."
+                            style="width: 100%; padding: 10px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                        <p style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">
+                            If set, the script will always include analysis relevant to this perspective.
+                        </p>
+                    </div>
+
+                    <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+                        The script will be generated using your transcript as structure and news articles as sources.
+                    </p>
+
+                    <!-- Topic Suggestions -->
+                    <div id="topic-suggestions-container" style="margin-bottom: 16px; display: none;">
+                        <label style="font-weight: 600; display: block; margin-bottom: 8px;">🎯 Suggested Topics (pick
+                            one or customize):</label>
+                        <div id="topic-suggestions-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                        <input type="text" id="custom-topic-input" placeholder="Or enter your own topic..."
+                            style="margin-top: 8px; width: 100%; padding: 10px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                    </div>
+
+                    <!-- Narrative Engine Topic Input -->
+                    <div style="margin-bottom: 12px;">
+                        <label style="font-weight: 600; display: block; margin-bottom: 6px; font-size: 14px;">
+                            🎯 Narrative Engine Topic <span
+                                style="color: var(--text-secondary); font-weight: 400;">(headline you're competing
+                                against)</span>
+                        </label>
+                        <input type="text" id="narrative-topic-input"
+                            placeholder="e.g., China Just Dumped $500 Billion in US Treasuries - Here's What It Means"
+                            style="width: 100%; padding: 10px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                    </div>
+
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                        <button class="btn-secondary" onclick="suggestTopics()" id="btn-suggest-topics">
+                            🎯 Suggest Topics
+                        </button>
+                        <button class="btn-primary" onclick="generateScriptAuto()" id="btn-generate-script">
+                            <span class="btn-icon">✨</span> Generate Script
+                        </button>
+                        <div
+                            style="display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #8B5CF6, #6366F1); padding: 4px 8px; border-radius: 8px;">
+                            <input type="number" id="narrative-value" value="3000" min="500" max="15000" step="500"
+                                style="width: 65px; padding: 6px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(0,0,0,0.3); color: white; font-size: 14px;">
+                            <select id="narrative-mode" onchange="updateNarrativePreview()"
+                                style="padding: 6px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(0,0,0,0.3); color: white; font-size: 12px;">
+                                <option value="words">words</option>
+                                <option value="minutes">min</option>
+                            </select>
+                            <button class="btn-primary" onclick="generateNarrativeScript()"
+                                style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3);">
+                                🎬 Narrative Engine
+                            </button>
+                        </div>
+                        <button class="btn-secondary" onclick="downloadSRT()" id="btn-download-srt">
+                            📄 Download SRT
+                        </button>
+                    </div>
+                </div>
+
+                <div class="script-container" id="script-container">
+                    <div class="empty-state">
+                        <span class="empty-icon">📜</span>
+                        <p>Click the button above to generate your script</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 6: Screenshots -->
+            <section class="step step-6" id="step-6">
+                <div class="step-header">
+                    <h2>📸 Screenshots</h2>
+                    <p>Capture screenshots to match your script claims</p>
+                </div>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="generateAIImages()"
+                        style="background: linear-gradient(135deg, #8B5CF6, #6366F1);">
+                        <span class="btn-icon">🎨</span> Generate AI Images
+                    </button>
+                    <button class="btn-secondary" onclick="captureClaimScreenshots()">
+                        <span class="btn-icon">🎯</span> Claim-Based Screenshots
+                    </button>
+                    <button class="btn-secondary" onclick="captureScreenshots()">
+                        <span class="btn-icon">📷</span> Quick Screenshots
+                    </button>
+                    <button class="btn-secondary" onclick="downloadScreenshots()">
+                        <span class="btn-icon">📦</span> Download All
+                    </button>
+                </div>
+
+                <div class="screenshots-container" id="screenshots-container">
+                    <div class="empty-state">
+                        <span class="empty-icon">🖼️</span>
+                        <p>Generate your script first, then capture screenshots</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 7: Video Editor -->
+            <section class="step step-7" id="step-7">
+                <div class="step-header">
+                    <h2>🎬 Video Editor</h2>
+                    <p>Assemble your video from chunks</p>
+                </div>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="loadVideoChunks()">
+                        <span class="btn-icon">🔄</span> Load Chunks
+                    </button>
+                    <button class="btn-secondary" onclick="forceLoadAIImages()"
+                        title="Load chunks from recent AI Image batch">
+                        <span class="btn-icon">📂</span> Load AI Images
+                    </button>
+                    <button class="btn-secondary" onclick="generateAllAudio()">
+                        <span class="btn-icon">🔊</span> Generate All Audio
+                    </button>
+                    <button class="btn-secondary" onclick="clearAllAudio()" style="background: var(--bg-tertiary);">
+                        <span class="btn-icon">🗑️</span> Clear Audio
+                    </button>
+                    <button class="btn-primary" onclick="buildVideo()" id="btn-build-video">
+                        <span class="btn-icon">🎬</span> Build Video
+                    </button>
+                </div>
+
+                <div id="video-stats"
+                    style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; display: none;">
+                    <span id="video-stats-text">Loading...</span>
+                </div>
+
+                <div class="video-timeline" id="video-timeline"
+                    style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;">
+                    <div class="empty-state">
+                        <span class="empty-icon">🎬</span>
+                        <p>Click "Load Chunks" to see your video timeline</p>
+                    </div>
+                </div>
+
+                <!-- Existing Video Selector for Subtitle Testing -->
+                <div id="video-selector-section"
+                    style="margin-top: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 12px;">
+                    <h4 style="margin-bottom: 12px;">📁 Existing Videos (Subtitle Testing)</h4>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                        <select id="video-selector"
+                            style="padding: 10px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); min-width: 300px;">
+                            <option value="">-- Select a video --</option>
+                        </select>
+                        <button class="btn-secondary" onclick="loadVideoList()">
+                            <span class="btn-icon">🔄</span> Refresh
+                        </button>
+                        <button class="btn-primary" onclick="loadSelectedVideo()">
+                            <span class="btn-icon">▶️</span> Load Video
+                        </button>
+                        <button class="btn-secondary" onclick="addSubtitlesToSelected()"
+                            id="add-subtitles-selected-btn">
+                            <span class="btn-icon">📝</span> Add Subtitles
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Video Preview -->
+                <div id="video-preview" style="margin-top: 20px; display: none;">
+                    <h3 style="margin-bottom: 12px;">📹 Final Video</h3>
+                    <video controls style="width: 100%; max-width: 800px; border-radius: 8px;">
+                        <source id="video-source" src="" type="video/mp4">
+                        Your browser does not support video playback.
+                    </video>
+                    <div style="display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+                        <a id="video-download" href="" download="final_video.mp4" class="btn-primary">
+                            <span class="btn-icon">📥</span> Download Video
+                        </a>
+                        <button id="add-subtitles-btn" class="btn-secondary" onclick="generateSubtitles()"
+                            style="display: inline-block;">
+                            <span class="btn-icon">📝</span> Add Subtitles (AI)
+                        </button>
+                        <button id="download-srt-btn" class="btn-secondary" onclick="downloadGeneratedSRT()"
+                            style="display: none;">
+                            <span class="btn-icon">📄</span> Download SRT
+                        </button>
+                        <button id="generate-description-btn" class="btn-secondary" onclick="generateVideoDescription()"
+                            style="display: none;">
+                            <span class="btn-icon">📋</span> Generate Chapters
+                        </button>
+                    </div>
+                    <!-- Chapters/Description Output -->
+                    <div id="chapters-output"
+                        style="display: none; margin-top: 16px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h4 style="margin: 0;">📋 Video Chapters (for YouTube Description)</h4>
+                            <button class="btn-secondary" onclick="copyChaptersToClipboard()"
+                                style="padding: 6px 12px; font-size: 12px;">
+                                📋 Copy
+                            </button>
+                        </div>
+                        <pre id="chapters-text"
+                            style="white-space: pre-wrap; font-size: 13px; line-height: 1.6; color: var(--text-primary);"></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 8: Thumbnail Generator -->
+            <section class="step step-8" id="step-8">
+                <div class="step-header">
+                    <h2>🎨 Thumbnail Generator</h2>
+                    <p>Select a custom thumbnail or dissect a reference thumbnail</p>
+                </div>
+
+                <!-- Custom Thumbnail Selector -->
+                <div style="margin-bottom: 24px; padding: 16px; background: var(--bg-secondary); border-radius: 12px;">
+                    <h4 style="margin-bottom: 12px;">📁 Custom Thumbnails</h4>
+                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+                        Add your thumbnails to: <code>.tmp/thumbnails/</code>
+                    </p>
+                    <button class="btn-secondary" onclick="loadCustomThumbnails()">
+                        🔄 Load Custom Thumbnails
+                    </button>
+                    <div id="custom-thumbnails-grid"
+                        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 16px;">
+                    </div>
+                    <div id="selected-custom-thumbnail"
+                        style="display: none; margin-top: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+                        <strong>Selected:</strong> <span id="selected-thumbnail-name"></span>
+                        <button class="btn-primary" onclick="useCustomThumbnail()" style="margin-left: 12px;">
+                            ✅ Use This Thumbnail
+                        </button>
+                    </div>
+                </div>
+
+                <hr style="border: 1px solid var(--border-color); margin-bottom: 24px;">
+
+                <div style="margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="loadSavedVideosForThumbnail()">
+                        <span class="btn-icon">🔄</span> Load Saved Videos (for Reference)
+                    </button>
+                </div>
+
+                <!-- Saved Videos Grid -->
+                <div id="thumbnail-videos-grid"
+                    style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                    <div class="empty-state">
+                        <span class="empty-icon">🎬</span>
+                        <p>Click "Load Saved Videos" to select a reference thumbnail</p>
+                    </div>
+                </div>
+
+                <!-- Selected Video + Analyze Button -->
+                <div id="thumbnail-analysis-section"
+                    style="display: none; margin-bottom: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 12px;">
+                    <div style="display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap;">
+                        <div style="flex: 0 0 300px;">
+                            <img id="selected-thumbnail" src="" style="width: 100%; border-radius: 8px;">
+                            <p id="selected-video-title" style="margin-top: 8px; font-weight: 500; font-size: 14px;">
+                            </p>
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <button class="btn-primary" onclick="analyzeThumbnail()"
+                                style="width: 100%; padding: 16px;">
+                                <span class="btn-icon">📊</span> Analyze Thumbnail
+                            </button>
+                            <p style="margin-top: 8px; font-size: 13px; color: var(--text-muted);">
+                                Dissects the thumbnail into 5 editable components
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dissected Elements Form -->
+                <div id="dissection-form"
+                    style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: 12px; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 16px;">📋 Dissected Elements</h3>
+
+                    <!-- 1. PERSON -->
+                    <div
+                        style="margin-bottom: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label style="font-weight: 600;">1. Person</label>
+                            <span style="font-size: 12px; color: var(--text-muted);">Keep same by default</span>
+                        </div>
+                        <p id="dissect-person-original"
+                            style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;"></p>
+                        <input type="text" id="dissect-person-override" placeholder="Leave empty to keep same..."
+                            style="width: 100%; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 13px;">
+                    </div>
+
+                    <!-- 2. EXPRESSION -->
+                    <div
+                        style="margin-bottom: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label style="font-weight: 600;">2. Expression/Pose</label>
+                        </div>
+                        <p id="dissect-expression-original"
+                            style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;"></p>
+                        <input type="text" id="dissect-expression-override"
+                            placeholder="e.g., angry, smiling, surprised..."
+                            style="width: 100%; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 13px;">
+                    </div>
+
+                    <!-- 3. TEXT -->
+                    <div
+                        style="margin-bottom: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; border: 2px solid var(--accent-color);">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label style="font-weight: 600; color: var(--accent-color);">3. Text (Key Override)</label>
+                        </div>
+                        <p id="dissect-text-original"
+                            style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;"></p>
+                        <input type="text" id="dissect-text-override" placeholder="Enter new text to replace..."
+                            style="width: 100%; padding: 10px; border-radius: 6px; background: var(--bg-primary); border: 2px solid var(--accent-color); color: var(--text-primary); font-size: 14px; font-weight: 500;">
+                    </div>
+
+                    <!-- 4. COLORS -->
+                    <div
+                        style="margin-bottom: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label style="font-weight: 600;">4. Colors</label>
+                        </div>
+                        <div id="dissect-colors-original" style="display: flex; gap: 8px; margin-bottom: 8px;"></div>
+                        <input type="text" id="dissect-colors-override"
+                            placeholder="e.g., red and black, blue gradient..."
+                            style="width: 100%; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 13px;">
+                    </div>
+
+                    <!-- 5. GRAPHICS -->
+                    <div
+                        style="margin-bottom: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label style="font-weight: 600;">5. Graphics/Background</label>
+                        </div>
+                        <p id="dissect-graphics-original"
+                            style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;"></p>
+                        <input type="text" id="dissect-graphics-override"
+                            placeholder="e.g., add explosion, change flag..."
+                            style="width: 100%; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 13px;">
+                    </div>
+
+                    <!-- Generate Button -->
+                    <button class="btn-primary" onclick="generateThumbnailFromDissection()"
+                        style="width: 100%; padding: 16px; font-size: 16px;">
+                        <span class="btn-icon">🖼️</span> Generate Thumbnail
+                    </button>
+                </div>
+
+                <!-- Generated Thumbnail -->
+                <div id="generated-thumbnail-section"
+                    style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: 12px;">
+                    <h4 style="margin-bottom: 8px;">Generated Thumbnail (1280x720):</h4>
+                    <img id="generated-thumbnail-img" src="" style="width: 100%; max-width: 640px; border-radius: 8px;">
+                    <div style="margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap;">
+                        <a id="download-thumbnail-link" href="" download="youtube_thumbnail.png" class="btn-secondary"
+                            style="display: inline-block;">
+                            📥 Download Thumbnail
+                        </a>
+                        <button class="btn-primary" onclick="finalizeThumbnail()">
+                            ✅ Finalize for Posting
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 9: Title Generator -->
+            <section class="step step-9" id="step-9">
+                <div class="step-header">
+                    <h2>✍️ Title Generator</h2>
+                    <p>Create high-CTR titles inspired by successful videos</p>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="loadSavedVideosForTitle()">
+                        <span class="btn-icon">🔄</span> Load Saved Videos
+                    </button>
+                </div>
+
+                <!-- Saved Videos List for Title Inspiration -->
+                <div id="title-videos-list"
+                    style="margin-bottom: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 12px;">
+                    <h3 style="margin-bottom: 12px;">Select Inspiration Title:</h3>
+                    <div id="title-inspiration-options" style="max-height: 300px; overflow-y: auto;">
+                        <p style="color: var(--text-muted);">Click "Load Saved Videos" to see titles</p>
+                    </div>
+                </div>
+
+                <!-- Title Generation Form -->
+                <div style="padding: 16px; background: var(--bg-secondary); border-radius: 12px;">
+                    <h3 style="margin-bottom: 12px;">✨ Generate Title Options</h3>
+
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500;">Your Video Topic:</label>
+                        <input type="text" id="title-topic" placeholder="e.g., China's Economic Crisis"
+                            style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500;">Channel Type:</label>
+                        <select id="title-channel-type"
+                            style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                            <option value="Geopolitics / News Analysis">Geopolitics / News Analysis</option>
+                            <option value="Tech Review">Tech Review</option>
+                            <option value="Educational">Educational</option>
+                            <option value="Entertainment">Entertainment</option>
+                            <option value="Finance / Business">Finance / Business</option>
+                            <option value="General">General</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500;">Content Summary
+                            (optional):</label>
+                        <textarea id="title-outline" rows="3" placeholder="Brief outline of your video content..."
+                            style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);"></textarea>
+                    </div>
+
+                    <button class="btn-primary" onclick="generateTitleOptions()">
+                        <span class="btn-icon">✨</span> Generate 3 Title Options
+                    </button>
+
+                    <!-- Generated Titles -->
+                    <div id="generated-titles-section" style="display: none; margin-top: 20px;">
+                        <h4 style="margin-bottom: 12px;">Generated Titles:</h4>
+                        <div id="generated-titles-list"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 10: Keyword Research -->
+            <section class="step step-10" id="step-10">
+                <div class="step-header">
+                    <h2>🔍 Keyword Research</h2>
+                    <p>Find low-competition keywords and analyze difficulty</p>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 12px;">
+                    <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 250px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Seed Keyword:</label>
+                            <input type="text" id="keyword-seed" placeholder="e.g., silver investing, crypto news"
+                                style="width: 100%; padding: 12px; border-radius: 8px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 15px;">
+                        </div>
+                        <div style="min-width: 120px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Region:</label>
+                            <select id="keyword-region"
+                                style="width: 100%; padding: 12px; border-radius: 8px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 15px;">
+                                <option value="US">🇺🇸 US</option>
+                                <option value="GB">🇬🇧 UK</option>
+                                <option value="CA">🇨🇦 Canada</option>
+                                <option value="AU">🇦🇺 Australia</option>
+                                <option value="IN">🇮🇳 India</option>
+                                <option value="DE">🇩🇪 Germany</option>
+                            </select>
+                        </div>
+                        <button class="btn-primary" onclick="researchKeywords()" style="padding: 12px 24px;">
+                            <span class="btn-icon">🔍</span> Research
+                        </button>
+                    </div>
+                    <p style="margin-top: 10px; font-size: 12px; color: var(--text-muted);">
+                        ℹ️ Uses ~100 API quota per keyword. Daily limit: 10,000 units. | 💡 Multiplier = Avg Views ÷
+                        Median Subs (higher = better opportunity)
+                    </p>
+                </div>
+
+                <!-- Seed Keyword Result -->
+                <div id="keyword-seed-result"
+                    style="display: none; margin-bottom: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 12px;">
+                    <h3 style="margin-bottom: 12px;">📊 Seed Keyword Analysis</h3>
+                    <div id="keyword-seed-content"></div>
+                </div>
+
+                <!-- Related Keywords Table -->
+                <div id="keyword-suggestions"
+                    style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: 12px;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h3>✨ Related Keywords (Sorted by Opportunity)</h3>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn-primary" onclick="saveKeywordsToTags()" style="padding: 8px 16px;">
+                                🏷️ Save to Tags
+                            </button>
+                            <button class="btn-secondary" onclick="exportKeywordsCSV()" style="padding: 8px 16px;">
+                                💾 Export CSV
+                            </button>
+                        </div>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table id="keywords-table" style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead>
+                                <tr style="background: var(--bg-tertiary);">
+                                    <th
+                                        style="padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color);">
+                                        Keyword</th>
+                                    <th
+                                        style="padding: 12px; text-align: center; border-bottom: 1px solid var(--border-color);">
+                                        Difficulty</th>
+                                    <th
+                                        style="padding: 12px; text-align: right; border-bottom: 1px solid var(--border-color);">
+                                        Avg Views</th>
+                                    <th
+                                        style="padding: 12px; text-align: right; border-bottom: 1px solid var(--border-color);">
+                                        Median Subs</th>
+                                    <th
+                                        style="padding: 12px; text-align: center; border-bottom: 1px solid var(--border-color);">
+                                        Multiplier</th>
+                                    <th
+                                        style="padding: 12px; text-align: center; border-bottom: 1px solid var(--border-color);">
+                                        Opportunity</th>
+                                </tr>
+                            </thead>
+                            <tbody id="keywords-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 11: More Info -->
+            <section class="step step-11" id="step-11">
+                <div class="step-header">
+                    <h2>📋 More Info</h2>
+                    <p>View video details, edit descriptions, and select tags</p>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="loadVideosForInfo()">
+                        <span class="btn-icon">🔄</span> Load Saved Videos
+                    </button>
+                </div>
+
+                <!-- Video Grid -->
+                <div id="info-videos-grid"
+                    style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+                    <div class="empty-state">
+                        <span class="empty-icon">📋</span>
+                        <p>Click "Load Saved Videos" to view video details</p>
+                    </div>
+                </div>
+
+                <!-- Video Details Panel -->
+                <div id="video-details-panel"
+                    style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: 12px; margin-bottom: 20px;">
+                    <h3 id="info-video-title" style="margin-bottom: 12px;"></h3>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                        <div style="padding: 10px; background: var(--bg-tertiary); border-radius: 8px;">
+                            <span style="font-size: 12px; color: var(--text-muted);">Views</span>
+                            <p id="info-view-count" style="font-size: 18px; font-weight: 600;"></p>
+                        </div>
+                        <div style="padding: 10px; background: var(--bg-tertiary); border-radius: 8px;">
+                            <span style="font-size: 12px; color: var(--text-muted);">Duration</span>
+                            <p id="info-duration" style="font-size: 18px; font-weight: 600;"></p>
+                        </div>
+                    </div>
+
+                    <!-- Description -->
+                    <div style="margin-bottom: 16px;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Description:</label>
+                        <textarea id="info-description" rows="5"
+                            style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 13px;"></textarea>
+                        <div style="margin-top: 8px; display: flex; gap: 8px;">
+                            <button class="btn-secondary" onclick="rewriteDescription()">
+                                🔄 AI Rewrite Description
+                            </button>
+                            <button class="btn-primary" onclick="finalizeDescription()">
+                                ✅ Save Description
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tags from Video -->
+                    <div style="margin-bottom: 16px;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-weight: 600;">Tags from Video (click to select):</label>
+                            <button class="btn-secondary" onclick="selectAllVideoTags()"
+                                style="padding: 4px 12px; font-size: 12px;">
+                                Select All
+                            </button>
+                        </div>
+                        <div id="info-tags-container" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                    </div>
+                </div>
+
+                <!-- Saved Keywords Section -->
+                <div id="saved-keywords-section"
+                    style="padding: 16px; background: var(--bg-secondary); border-radius: 12px; margin-bottom: 20px;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4>🏷️ Saved Keywords (from Research)</h4>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button class="btn-secondary" onclick="selectAllSavedKeywords()"
+                                style="padding: 4px 12px; font-size: 12px;">
+                                Select All
+                            </button>
+                            <button class="btn-secondary" onclick="deselectAllSavedKeywords()"
+                                style="padding: 4px 12px; font-size: 12px;">
+                                Deselect All
+                            </button>
+                            <button class="btn-secondary" onclick="deleteSelectedKeywords()"
+                                style="padding: 4px 12px; font-size: 12px; color: var(--warning-color);">
+                                🗑️ Delete Selected
+                            </button>
+                            <button class="btn-secondary" onclick="clearSavedKeywords()"
+                                style="padding: 4px 12px; font-size: 12px; color: var(--error);">
+                                Clear All
+                            </button>
+                        </div>
+                    </div>
+                    <div id="saved-keywords-container"
+                        style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 40px; padding: 10px; background: var(--bg-tertiary); border-radius: 8px;">
+                        <span style="color: var(--text-muted);">No saved keywords. Go to Keywords tab and research, then
+                            click "Save to Tags".</span>
+                    </div>
+                </div>
+
+                <!-- Selected Tags Summary -->
+                <div id="selected-tags-section"
+                    style="padding: 16px; background: var(--bg-secondary); border-radius: 12px;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4>📑 Selected Tags (for Posting)</h4>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <button class="btn-secondary"
+                                onclick="console.log('Calling updateSelectedTagsDisplay, selectedTags size:', selectedTags.size); updateSelectedTagsDisplay();"
+                                style="padding: 4px 8px; font-size: 11px;">🔄 Refresh</button>
+                            <span id="tags-char-count"
+                                style="font-size: 14px; padding: 4px 10px; background: var(--bg-tertiary); border-radius: 6px;">
+                                0 / 500 chars
+                            </span>
+                        </div>
+                    </div>
+                    <div id="all-selected-tags"
+                        style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 40px; padding: 10px; background: var(--bg-tertiary); border-radius: 8px;">
+                        <span style="color: var(--text-muted);">No tags selected yet</span>
+                    </div>
+                    <button class="btn-primary" onclick="finalizeTags()" style="margin-top: 12px;">
+                        ✅ Save Tags for Posting
+                    </button>
+                </div>
+            </section>
+
+
+            <!-- Step 12: Post to YouTube -->
+            <section class="step step-12" id="step-12">
+                <div class="step-header">
+                    <h2>📤 Post to YouTube</h2>
+                    <p>Upload your video with all finalized content</p>
+                </div>
+
+                <!-- Finalized Items Summary -->
+                <div style="margin-bottom: 20px;">
+                    <button class="btn-secondary" onclick="refreshFinalizedItems()">
+                        <span class="btn-icon">🔄</span> Refresh Status
+                    </button>
+                </div>
+
+                <div style="display: grid; gap: 12px; margin-bottom: 20px;">
+                    <!-- Thumbnail -->
+                    <div
+                        style="padding: 16px; background: var(--bg-secondary); border-radius: 12px; display: flex; align-items: center; gap: 16px;">
+                        <span id="finalized-thumbnail-status" style="font-size: 24px;">⏳</span>
+                        <div style="flex: 1;">
+                            <h4>Thumbnail</h4>
+                            <p id="finalized-thumbnail-text" style="font-size: 13px; color: var(--text-muted);">Not
+                                finalized</p>
+                        </div>
+                        <img id="finalized-thumbnail-preview" src=""
+                            style="width: 120px; height: 68px; object-fit: cover; border-radius: 6px; display: none;">
+                    </div>
+
+                    <!-- Title -->
+                    <div
+                        style="padding: 16px; background: var(--bg-secondary); border-radius: 12px; display: flex; align-items: center; gap: 16px;">
+                        <span id="finalized-title-status" style="font-size: 24px;">⏳</span>
+                        <div style="flex: 1;">
+                            <h4>Title</h4>
+                            <p id="finalized-title-text" style="font-size: 13px; color: var(--text-muted);">Not
+                                finalized</p>
+                        </div>
+                    </div>
+
+                    <!-- Description -->
+                    <div
+                        style="padding: 16px; background: var(--bg-secondary); border-radius: 12px; display: flex; align-items: center; gap: 16px;">
+                        <span id="finalized-description-status" style="font-size: 24px;">⏳</span>
+                        <div style="flex: 1;">
+                            <h4>Description</h4>
+                            <p id="finalized-description-text" style="font-size: 13px; color: var(--text-muted);">Not
+                                finalized</p>
+                        </div>
+                    </div>
+
+                    <!-- Tags -->
+                    <div
+                        style="padding: 16px; background: var(--bg-secondary); border-radius: 12px; display: flex; align-items: center; gap: 16px;">
+                        <span id="finalized-tags-status" style="font-size: 24px;">⏳</span>
+                        <div style="flex: 1;">
+                            <h4>Tags</h4>
+                            <p id="finalized-tags-text" style="font-size: 13px; color: var(--text-muted);">Not finalized
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Video File Selector -->
+                <div style="padding: 16px; background: var(--bg-secondary); border-radius: 12px; margin-bottom: 20px;">
+                    <h4 style="margin-bottom: 12px;">📁 Select Video to Upload</h4>
+                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+                        Generated videos are saved to: <code>.tmp/final_videos/</code>
+                    </p>
+                    <button class="btn-secondary" onclick="loadFinalVideos()">
+                        🔄 Load Available Videos
+                    </button>
+                    <div id="final-videos-list" style="margin-top: 16px;">
+                    </div>
+                    <div id="selected-video-info"
+                        style="display: none; margin-top: 12px; padding: 12px; background: var(--success); border-radius: 8px; color: white;">
+                        <strong>Selected for upload:</strong> <span id="selected-video-name"></span>
+                    </div>
+                </div>
+
+                <!-- Upload Section -->
+                <div style="padding: 16px; background: var(--bg-secondary); border-radius: 12px;">
+                    <h4 style="margin-bottom: 12px;">🚀 Upload</h4>
+
+                    <!-- Auth Status -->
+                    <div id="youtube-auth-status"
+                        style="margin-bottom: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+                        <span id="auth-status-icon">⏳</span>
+                        <span id="auth-status-text">Checking authentication...</span>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+                        <a href="/api/youtube/auth" class="btn-secondary"
+                            style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none;">
+                            🔗 Connect YouTube Account
+                        </a>
+                        <button class="btn-secondary" onclick="checkYouTubeAuth()">
+                            🔄 Check Status
+                        </button>
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500;">Privacy Status:</label>
+                        <select id="upload-privacy"
+                            style="padding: 10px; border-radius: 8px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                            <option value="private">Private (Recommended)</option>
+                            <option value="unlisted">Unlisted</option>
+                            <option value="public">Public</option>
+                        </select>
+                    </div>
+                    <button class="btn-primary" onclick="uploadToYouTube()"
+                        style="width: 100%; padding: 16px; font-size: 16px;">
+                        <span class="btn-icon">📤</span> Upload to YouTube
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Loading Overlay with Live Logs -->
+        <div class="loading-overlay" id="loading">
+            <div class="loading-content">
+                <div class="loading-spinner"></div>
+                <p id="loading-text">Processing...</p>
+            </div>
+            <div class="live-logs-panel">
+                <div class="live-logs-header">
+                    <span class="live-logs-dot"></span>
+                    <span>Live Logs</span>
+                </div>
+                <div class="live-logs-content" id="live-logs">
+                    <div class="log-entry">> System ready...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Project Modal -->
+        <div class="modal-overlay" id="project-modal">
+            <div class="modal">
+                <h3>Create New Project</h3>
+                <div class="form-group">
+                    <label for="project-niche">Niche</label>
+                    <input type="text" id="project-niche" placeholder="e.g., Finance, Tech, Health">
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="hideNewProjectModal()">Cancel</button>
+                    <button class="btn-primary" onclick="createProject()">Create</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/main.js?v=20260113211130"></script>
+</body>
+
+</html>
