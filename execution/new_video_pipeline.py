@@ -19,6 +19,7 @@ All steps require Telegram approval.
 
 import os
 import sys
+import json
 import asyncio
 from typing import Dict, Optional, List
 from datetime import datetime
@@ -82,8 +83,10 @@ class NewVideoPipeline:
     Orchestrates the research-first video generation pipeline.
     Each step waits for user approval via Telegram.
     """
+    # State persistence file location
+    STATE_DIR = ".tmp/pipeline_state"
     
-    def __init__(self, chat_id: int, send_message_func, send_keyboard_func):
+    def __init__(self, chat_id: int, send_message_func, send_keyboard_func, test_mode: bool = False):
         """
         Initialize pipeline.
         
@@ -91,10 +94,16 @@ class NewVideoPipeline:
             chat_id: Telegram chat ID
             send_message_func: Async function to send messages
             send_keyboard_func: Async function to send keyboard options
+            test_mode: If True, generate shorter content for faster testing
         """
         self.chat_id = chat_id
         self.send_message = send_message_func
         self.send_keyboard = send_keyboard_func
+        self.test_mode = test_mode
+        
+        # State file path for this chat
+        os.makedirs(self.STATE_DIR, exist_ok=True)
+        self.state_file = os.path.join(self.STATE_DIR, f"chat_{chat_id}.json")
         
         # Pipeline state
         self.state = {
@@ -114,13 +123,102 @@ class NewVideoPipeline:
             "tags": [],
             "description": None,
             "timestamps": None,
-            "output_dir": None
+            "output_dir": None,
+            "test_mode": test_mode
         }
         
         # Create output directory
         self.output_dir = f".tmp/pipeline_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         os.makedirs(self.output_dir, exist_ok=True)
         self.state["output_dir"] = self.output_dir
+    
+    def save_state(self):
+        """Save current state to file for resume capability."""
+        try:
+            # Don't save large data like full research/script to state file
+            save_data = {
+                "step": self.state["step"],
+                "topic": self.state["topic"],
+                "title": self.state["title"],
+                "style": self.state["style"],
+                "output_dir": self.state["output_dir"],
+                "test_mode": self.state.get("test_mode", False),
+                "timestamp": datetime.now().isoformat(),
+                # Save paths only, not content
+                "script_path": self.state.get("script_path"),
+                "video_path": self.state.get("video_path"),
+                "srt_path": self.state.get("srt_path"),
+                "subtitled_video_path": self.state.get("subtitled_video_path"),
+                "thumbnail_path": self.state.get("thumbnail_path"),
+            }
+            with open(self.state_file, "w") as f:
+                json.dump(save_data, f, indent=2)
+            print(f"State saved: step={self.state['step']}")
+        except Exception as e:
+            print(f"State save error: {e}")
+    
+    @classmethod
+    def load_state(cls, chat_id: int) -> Optional[Dict]:
+        """Load saved state for a chat ID."""
+        state_file = os.path.join(cls.STATE_DIR, f"chat_{chat_id}.json")
+        if os.path.exists(state_file):
+            try:
+                with open(state_file, "r") as f:
+                    return json.load(f)
+            except:
+                return None
+        return None
+    
+    @classmethod
+    def has_saved_state(cls, chat_id: int) -> bool:
+        """Check if there's a saved state for this chat."""
+        state_file = os.path.join(cls.STATE_DIR, f"chat_{chat_id}.json")
+        return os.path.exists(state_file)
+    
+    def clear_state(self):
+        """Clear saved state file."""
+        if os.path.exists(self.state_file):
+            os.remove(self.state_file)
+            print("State cleared")
+    
+    async def resume(self):
+        """Resume from saved state."""
+        saved = self.load_state(self.chat_id)
+        if not saved:
+            await self.send_message("❌ No saved session found. Use /newvideo to start fresh.")
+            return False
+        
+        # Restore state
+        self.state["step"] = saved.get("step", "init")
+        self.state["topic"] = saved.get("topic")
+        self.state["title"] = saved.get("title")
+        self.state["style"] = saved.get("style", DEFAULT_STYLE)
+        self.state["output_dir"] = saved.get("output_dir", self.output_dir)
+        self.test_mode = saved.get("test_mode", False)
+        
+        # Restore paths
+        if saved.get("script_path"):
+            self.state["script_path"] = saved["script_path"]
+            if os.path.exists(saved["script_path"]):
+                with open(saved["script_path"], "r") as f:
+                    self.state["script"] = f.read()
+        
+        timestamp = saved.get("timestamp", "unknown")
+        step = self.state["step"]
+        title = self.state.get("title", "Unknown")
+        
+        await self.send_keyboard(
+            f"📂 **Resume Session**\n\n"
+            f"**Title:** {title}\n"
+            f"**Step:** {step}\n"
+            f"**Saved:** {timestamp}\n\n"
+            f"Continue from this point?",
+            [
+                ("✅ Continue", f"newvideo_resume_{step}"),
+                ("🔄 Start Fresh", "newvideo_start_fresh")
+            ]
+        )
+        return True
     
     async def start(self):
         """Start the pipeline - ask to scan trends."""
@@ -176,6 +274,40 @@ class NewVideoPipeline:
         
         elif callback_data == "newvideo_evergreen":
             await self._show_evergreen_topics()
+            return True
+        
+        # Resume/Start Fresh handlers
+        elif callback_data == "newvideo_start_fresh":
+            self.clear_state()
+            await self.start()
+            return True
+        
+        elif callback_data.startswith("newvideo_resume_"):
+            # Resume from saved step - continue to next action
+            step = callback_data.replace("newvideo_resume_", "")
+            await self.send_message(f"▶️ Resuming from step: {step}")
+            # Trigger appropriate next action based on step
+            if step == "approving_title":
+                await self._start_research()
+            elif step == "approving_research":
+                await self._generate_outline()
+            elif step == "approving_outline":
+                await self._generate_script()
+            elif step == "approving_script":
+                await self._select_style()
+            elif step == "approving_images":
+                await self._generate_video()
+            elif step == "approving_video":
+                await self._add_subtitles()
+            elif step == "approving_subtitles":
+                await self._generate_metadata()
+            elif step == "approving_metadata":
+                await self._generate_thumbnail()
+            elif step == "approving_thumbnail":
+                await self._prepare_upload()
+            else:
+                await self.send_message(f"Unknown step: {step}. Starting fresh.")
+                await self.start()
             return True
         
         # Step 2: Topic selection
@@ -386,6 +518,7 @@ class NewVideoPipeline:
         title = self._create_title_from_topic(topic)
         self.state["title"] = title
         self.state["step"] = "approving_title"
+        self.save_state()  # Save for resume
         
         await self.send_keyboard(
             f"📌 **Proposed Title:**\n\n`{title}`\n\nApprove this title?",
@@ -475,6 +608,7 @@ class NewVideoPipeline:
             ]
         )
         self.state["step"] = "approving_research"
+        self.save_state()  # Save for resume
     
     async def _regenerate_research(self):
         """Regenerate research."""
@@ -510,6 +644,7 @@ class NewVideoPipeline:
             ]
         )
         self.state["step"] = "approving_outline"
+        self.save_state()  # Save for resume
     
     async def _regenerate_outline(self):
         """Regenerate the outline with fresh approach."""
@@ -568,6 +703,7 @@ class NewVideoPipeline:
                 ]
             )
             self.state["step"] = "approving_script"
+            self.save_state()  # Save for resume
         except Exception as e:
             await self.send_message(f"❌ Script generation error: {str(e)}\n\nUse the Regenerate button to retry.")
     
@@ -613,6 +749,7 @@ class NewVideoPipeline:
             ]
         )
         self.state["step"] = "approving_images"
+        self.save_state()  # Save for resume
     
     async def _regenerate_images(self):
         """Regenerate images."""
@@ -646,6 +783,7 @@ class NewVideoPipeline:
             ]
         )
         self.state["step"] = "approving_video"
+        self.save_state()  # Save for resume
     
     async def _add_subtitles(self):
         """Add subtitles to video."""
@@ -671,6 +809,7 @@ class NewVideoPipeline:
             ]
         )
         self.state["step"] = "approving_subtitles"
+        self.save_state()  # Save for resume
     
     async def _regenerate_video(self):
         """Regenerate video from images and audio."""
@@ -715,6 +854,7 @@ class NewVideoPipeline:
             ]
         )
         self.state["step"] = "approving_metadata"
+        self.save_state()  # Save for resume
     
     async def _regenerate_metadata(self):
         """Regenerate metadata."""
@@ -744,6 +884,7 @@ class NewVideoPipeline:
             ]
         )
         self.state["step"] = "approving_thumbnail"
+        self.save_state()  # Save for resume
     
     async def _regenerate_thumbnail(self):
         """Regenerate thumbnail."""
@@ -811,9 +952,9 @@ def get_pipeline(chat_id: int) -> Optional[NewVideoPipeline]:
     return _pipeline_instances.get(chat_id)
 
 
-def create_pipeline(chat_id: int, send_message_func, send_keyboard_func) -> NewVideoPipeline:
+def create_pipeline(chat_id: int, send_message_func, send_keyboard_func, test_mode: bool = False) -> NewVideoPipeline:
     """Create new pipeline instance."""
-    pipeline = NewVideoPipeline(chat_id, send_message_func, send_keyboard_func)
+    pipeline = NewVideoPipeline(chat_id, send_message_func, send_keyboard_func, test_mode=test_mode)
     _pipeline_instances[chat_id] = pipeline
     return pipeline
 
@@ -822,3 +963,13 @@ def remove_pipeline(chat_id: int):
     """Remove pipeline instance."""
     if chat_id in _pipeline_instances:
         del _pipeline_instances[chat_id]
+
+
+def has_saved_session(chat_id: int) -> bool:
+    """Check if there's a saved session for this chat."""
+    return NewVideoPipeline.has_saved_state(chat_id)
+
+
+def get_saved_session_info(chat_id: int) -> Optional[Dict]:
+    """Get saved session info for resume prompt."""
+    return NewVideoPipeline.load_state(chat_id)
