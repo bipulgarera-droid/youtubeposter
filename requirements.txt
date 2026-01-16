@@ -7,6 +7,7 @@ gunicorn==21.2.0
 # YouTube & Google APIs
 google-api-python-client==2.111.0
 google-generativeai==0.8.3
+google-genai>=1.0.0
 google-auth-oauthlib==1.2.0
 google-auth-httplib2==0.2.0
 youtube-transcript-api
