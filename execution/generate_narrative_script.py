@@ -199,7 +199,7 @@ TOPIC: {topic}
 
 CURRENT BEAT: {beat['name']}
 PURPOSE: {beat['purpose']}
-WORD TARGET: {beat['word_target']} words (stay within ±15%)
+WORD TARGET: EXACTLY {beat['word_target']} words. This is a HARD requirement. Not ±15%, not "around". EXACTLY {beat['word_target']} words. Count carefully before finishing.
 MUST INCLUDE: {', '.join(beat['required_elements'])}
 MUST END WITH: {beat['ends_with']}
 
@@ -212,7 +212,7 @@ RESEARCH DATA:
 
 CRITICAL RULES:
 1. Write EXACTLY for this beat's purpose - don't cover other beats
-2. Stay close to the word target ({beat['word_target']} words)
+2. YOU MUST HIT THE WORD TARGET OF {beat['word_target']} WORDS. This is non-negotiable. If you're short, expand with more examples and details. If you're over, trim redundancy.
 3. End with a hook that makes the viewer desperate to hear the next section
 4. Do NOT include section headers or titles - just flowing prose
 5. Write for SPOKEN delivery - avoid complex sentence structures
@@ -228,7 +228,7 @@ DATA INTEGRITY (EXTREMELY IMPORTANT):
 - If you need a number and it's not in the research, describe the concept without a specific figure
 - Wrong numbers destroy credibility - when in doubt, omit the number
 
-Write the {beat['name']} beat now. Just the prose, no metadata. Start directly with engaging content."""
+Write the {beat['name']} beat now. REMEMBER: You MUST write exactly {beat['word_target']} words. Just the prose, no metadata. Start directly with engaging content."""
 
     model = get_model()
     
