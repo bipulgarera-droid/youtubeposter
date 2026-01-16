@@ -146,6 +146,29 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return CHOOSING_MODE
 
 
+async def newvideo_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start new video pipeline directly."""
+    # Clear any previous conversation data
+    context.user_data.clear()
+    
+    chat_id = update.effective_chat.id
+    
+    async def send_message(text):
+        await context.bot.send_message(chat_id, text, parse_mode='Markdown')
+    
+    async def send_keyboard(text, options):
+        keyboard = [[InlineKeyboardButton(label, callback_data=cb)] for label, cb in options]
+        await context.bot.send_message(
+            chat_id, text, parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    
+    pipeline = create_pipeline(chat_id, send_message, send_keyboard)
+    context.user_data['pipeline'] = pipeline
+    await pipeline.start()
+    return NEWVIDEO_FLOW
+
+
 async def mode_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle mode selection."""
     query = update.callback_query
@@ -667,6 +690,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
+            CommandHandler("newvideo", newvideo_command),
             CommandHandler("cancel", cancel_command),
         ],
         states={
