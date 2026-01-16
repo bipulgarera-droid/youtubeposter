@@ -845,32 +845,97 @@ class NewVideoPipeline:
     
     async def _generate_video(self):
         """Generate video from images and audio."""
-        await self.send_message("🎬 Generating video...")
+        await self.send_message("🎬 Generating video...\n\n⏳ This involves generating audio for each chunk and assembling the video. This may take several minutes for longer scripts.")
         self.state["step"] = "generating_video"
         
-        # Generate audio
-        audio_path = os.path.join(self.output_dir, "audio.mp3")
-        generate_audio_from_script(self.state["script"], audio_path)
-        self.state["audio_path"] = audio_path
+        # Get image data from state
+        images_result = self.state.get("images", {})
+        image_chunks = images_result.get("chunks", [])
         
-        # Build video
-        video_path = os.path.join(self.output_dir, "video.mp4")
-        build_video_from_chunks(
-            images=self.state["images"],
-            audio=audio_path,
-            output=video_path
-        )
-        self.state["video_path"] = video_path
+        if not image_chunks:
+            await self.send_message("❌ No image data found. Please regenerate images first.")
+            return
         
-        await self.send_keyboard(
-            f"🎬 **Video Generated**\n\nPath: `{video_path}`\n\nApprove video?",
-            [
-                ("✅ Approve Video", "newvideo_video_approve"),
-                ("🔄 Regenerate", "newvideo_video_regen")
-            ]
-        )
-        self.state["step"] = "approving_video"
-        self.save_state()  # Save for resume
+        await self.send_message(f"📊 Processing {len(image_chunks)} chunks...")
+        
+        # Build chunk objects for video generation
+        video_chunks = []
+        audio_dir = os.path.join(self.output_dir, "audio")
+        os.makedirs(audio_dir, exist_ok=True)
+        
+        for i, img_chunk in enumerate(image_chunks):
+            chunk_text = img_chunk.get("chunk_text", "")
+            screenshot_path = img_chunk.get("path") if img_chunk.get("success") else None
+            
+            # Generate audio for this chunk
+            audio_path = os.path.join(audio_dir, f"chunk_{i:03d}.wav")
+            
+            try:
+                audio_result = generate_audio_from_script(chunk_text, audio_path)
+                if not audio_result.get("success"):
+                    print(f"Audio generation failed for chunk {i}: {audio_result.get('error')}")
+                    continue
+            except Exception as e:
+                print(f"Audio error chunk {i}: {e}")
+                continue
+            
+            video_chunks.append({
+                "id": i,
+                "text": chunk_text,
+                "audio_path": audio_path,
+                "screenshot_path": screenshot_path
+            })
+            
+            # Progress update every 20 chunks
+            if (i + 1) % 20 == 0:
+                await self.send_message(f"⏳ Processed {i + 1}/{len(image_chunks)} chunks...")
+        
+        if not video_chunks:
+            await self.send_message("❌ Failed to generate audio for any chunks.")
+            return
+        
+        await self.send_message(f"✅ Audio generated for {len(video_chunks)} chunks.\n\n🎬 Now assembling video...")
+        
+        # Build video from chunks
+        try:
+            video_result = build_video_from_chunks(video_chunks)
+            
+            if not video_result.get("success"):
+                await self.send_message(f"❌ Video assembly failed: {video_result.get('message')}")
+                return
+            
+            video_path = video_result.get("output_path")
+            duration = video_result.get("duration", 0)
+            
+            self.state["video_path"] = video_path
+            
+            # Send video file to Telegram for preview
+            try:
+                with open(video_path, 'rb') as video_file:
+                    await self.context.bot.send_video(
+                        chat_id=self.chat_id,
+                        video=video_file,
+                        caption=f"🎬 Video preview ({duration/60:.1f} min)"
+                    )
+            except Exception as e:
+                print(f"Failed to send video preview: {e}")
+            
+            await self.send_keyboard(
+                f"🎬 **Video Generated**\n\n"
+                f"Duration: {duration/60:.1f} minutes\n"
+                f"Chunks: {len(video_chunks)}\n\n"
+                f"Approve video?",
+                [
+                    ("✅ Approve Video", "newvideo_video_approve"),
+                    ("🔄 Regenerate", "newvideo_video_regen")
+                ]
+            )
+            self.state["step"] = "approving_video"
+            self.save_state()
+            
+        except Exception as e:
+            await self.send_message(f"❌ Video generation error: {str(e)}")
+            print(f"Video generation exception: {e}")
     
     async def _add_subtitles(self):
         """Add subtitles to video."""
