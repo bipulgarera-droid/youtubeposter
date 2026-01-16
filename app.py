@@ -20,26 +20,58 @@ load_dotenv()
 # Allow OAuth over HTTP for local development
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
-# Import execution modules
-from execution.youtube_search import discover_videos
-from execution.transcribe_video import transcribe_video
-from execution.search_news import search_news
-from execution.generate_script import generate_script
-from execution.fetch_articles import fetch_multiple_articles
-from execution.generate_video import build_video_from_chunks, check_ffmpeg
-from execution.generate_ai_images import generate_all_images, generate_chunk_image, split_script_to_chunks
-from execution.generate_narrative_script import generate_narrative_script, DEFAULT_BEATS
-from execution.thumbnail_generator import (
-    extract_video_id, download_thumbnail, dissect_thumbnail, 
-    generate_thumbnail_prompt
-)
-from execution.title_generator import generate_title_options
-from execution.keyword_research import research_keywords
-from execution.youtube_video_info import get_video_details, get_multiple_video_details, format_duration
-from execution.youtube_upload import (
-    get_auth_url, handle_oauth_callback, is_authenticated, 
-    upload_video, check_dependencies
-)
+# Import execution modules with fallback for missing dependencies
+try:
+    from execution.youtube_search import discover_videos
+    from execution.transcribe_video import transcribe_video
+    from execution.search_news import search_news
+    from execution.generate_script import generate_script
+    from execution.fetch_articles import fetch_multiple_articles
+    from execution.generate_video import build_video_from_chunks, check_ffmpeg
+    from execution.generate_ai_images import generate_all_images, generate_chunk_image, split_script_to_chunks
+    from execution.generate_narrative_script import generate_narrative_script, DEFAULT_BEATS
+    from execution.thumbnail_generator import (
+        extract_video_id, download_thumbnail, dissect_thumbnail, 
+        generate_thumbnail_prompt
+    )
+    from execution.title_generator import generate_title_options
+    from execution.keyword_research import research_keywords
+    from execution.youtube_video_info import get_video_details, get_multiple_video_details, format_duration
+    from execution.youtube_upload import (
+        get_auth_url, handle_oauth_callback, is_authenticated, 
+        upload_video, check_dependencies
+    )
+    EXECUTION_MODULES_LOADED = True
+except ImportError as e:
+    print(f"⚠️ Warning: Some execution modules failed to load: {e}")
+    EXECUTION_MODULES_LOADED = False
+    # Define placeholder functions for missing imports
+    def discover_videos(*args, **kwargs): return []
+    def transcribe_video(*args, **kwargs): return ""
+    def search_news(*args, **kwargs): return []
+    def generate_script(*args, **kwargs): return ""
+    def fetch_multiple_articles(*args, **kwargs): return []
+    def build_video_from_chunks(*args, **kwargs): return None
+    def check_ffmpeg(): return False
+    def generate_all_images(*args, **kwargs): return []
+    def generate_chunk_image(*args, **kwargs): return None
+    def split_script_to_chunks(*args, **kwargs): return []
+    def generate_narrative_script(*args, **kwargs): return {}
+    DEFAULT_BEATS = []
+    def extract_video_id(*args, **kwargs): return None
+    def download_thumbnail(*args, **kwargs): return None
+    def dissect_thumbnail(*args, **kwargs): return {}
+    def generate_thumbnail_prompt(*args, **kwargs): return ""
+    def generate_title_options(*args, **kwargs): return []
+    def research_keywords(*args, **kwargs): return []
+    def get_video_details(*args, **kwargs): return {}
+    def get_multiple_video_details(*args, **kwargs): return []
+    def format_duration(*args, **kwargs): return ""
+    def get_auth_url(): return {}
+    def handle_oauth_callback(*args, **kwargs): return {}
+    def is_authenticated(): return False
+    def upload_video(*args, **kwargs): return {}
+    def check_dependencies(): return {}
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-prod')
