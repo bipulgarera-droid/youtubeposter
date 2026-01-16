@@ -34,6 +34,7 @@ from execution.research_agent import deep_research, format_research_for_script
 from execution.style_selector import get_style_options, apply_style_to_prompt, DEFAULT_STYLE
 from execution.file_renamer import rename_output_files, generate_topic_slug, extract_topic_from_title
 from execution.generate_outline import generate_outline, format_outline_for_telegram, format_outline_for_script
+from execution.job_queue import get_redis_connection
 
 
 # Import existing generators (with try/except for missing modules)
@@ -83,8 +84,6 @@ class NewVideoPipeline:
     Orchestrates the research-first video generation pipeline.
     Each step waits for user approval via Telegram.
     """
-    # State persistence file location
-    STATE_DIR = ".tmp/pipeline_state"
     
     def __init__(self, chat_id: int, send_message_func, send_keyboard_func, test_mode: bool = False):
         """
@@ -101,9 +100,8 @@ class NewVideoPipeline:
         self.send_keyboard = send_keyboard_func
         self.test_mode = test_mode
         
-        # State file path for this chat
-        os.makedirs(self.STATE_DIR, exist_ok=True)
-        self.state_file = os.path.join(self.STATE_DIR, f"chat_{chat_id}.json")
+        # Redis key for persistence
+        self.redis_key = f"pipeline_state:{chat_id}"
         
         # Pipeline state
         self.state = {
@@ -133,9 +131,9 @@ class NewVideoPipeline:
         self.state["output_dir"] = self.output_dir
     
     def save_state(self):
-        """Save current state to file for resume capability."""
+        """Save current state to Redis for resume capability."""
         try:
-            # Don't save large data like full research/script to state file
+            # Don't save large data like full research/script to state
             save_data = {
                 "step": self.state["step"],
                 "topic": self.state["topic"],
@@ -151,35 +149,44 @@ class NewVideoPipeline:
                 "subtitled_video_path": self.state.get("subtitled_video_path"),
                 "thumbnail_path": self.state.get("thumbnail_path"),
             }
-            with open(self.state_file, "w") as f:
-                json.dump(save_data, f, indent=2)
-            print(f"State saved: step={self.state['step']}")
+            redis = get_redis_connection()
+            # Save to Redis with 7-day TTL
+            redis.set(self.redis_key, json.dumps(save_data), ex=604800)
+            print(f"State saved to Redis: step={self.state['step']}")
         except Exception as e:
             print(f"State save error: {e}")
     
     @classmethod
     def load_state(cls, chat_id: int) -> Optional[Dict]:
-        """Load saved state for a chat ID."""
-        state_file = os.path.join(cls.STATE_DIR, f"chat_{chat_id}.json")
-        if os.path.exists(state_file):
-            try:
-                with open(state_file, "r") as f:
-                    return json.load(f)
-            except:
-                return None
+        """Load saved state for a chat ID from Redis."""
+        try:
+            redis = get_redis_connection()
+            key = f"pipeline_state:{chat_id}"
+            data = redis.get(key)
+            if data:
+                return json.loads(data)
+        except Exception as e:
+            print(f"Error loading state: {e}")
         return None
     
     @classmethod
     def has_saved_state(cls, chat_id: int) -> bool:
-        """Check if there's a saved state for this chat."""
-        state_file = os.path.join(cls.STATE_DIR, f"chat_{chat_id}.json")
-        return os.path.exists(state_file)
+        """Check if there's a saved state for this chat in Redis."""
+        try:
+            redis = get_redis_connection()
+            key = f"pipeline_state:{chat_id}"
+            return redis.exists(key) > 0
+        except:
+            return False
     
     def clear_state(self):
-        """Clear saved state file."""
-        if os.path.exists(self.state_file):
-            os.remove(self.state_file)
-            print("State cleared")
+        """Clear saved state from Redis."""
+        try:
+            redis = get_redis_connection()
+            redis.delete(self.redis_key)
+            print("State cleared from Redis")
+        except Exception as e:
+            print(f"Error clearing state: {e}")
     
     async def resume(self):
         """Resume from saved state."""
