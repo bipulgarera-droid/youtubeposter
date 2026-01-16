@@ -22,68 +22,139 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 
-def deep_research(topic: str, country: Optional[str] = None) -> Dict:
+def deep_research(topic: str, country: Optional[str] = None, source_article: Optional[Dict] = None) -> Dict:
     """
     Conduct deep research on a topic for script writing.
     
+    Args:
+        topic: The topic/title to research
+        country: Optional country to focus on
+        source_article: Optional original news article that triggered this topic
+    
     Returns structured research with:
-    - Recent news
+    - Recent news (current year)
     - Historical context
     - Key statistics
     - Notable quotes/sources
     """
     print(f"Researching: {topic}")
+    current_year = datetime.now().year
     
     research = {
         "topic": topic,
         "country": country,
         "timestamp": datetime.now().isoformat(),
+        "source_article": source_article,
         "recent_news": [],
         "historical_context": [],
         "statistics": [],
+        "expert_analysis": [],
         "key_sources": [],
-        "summary": ""
+        "raw_facts": ""  # Changed from summary - just facts, no narrative
     }
     
-    # 1. Recent news (last week)
-    research["recent_news"] = _search_recent_news(topic, country)
+    # 1. Recent news (THIS year - multiple queries)
+    research["recent_news"] = _search_recent_news(topic, country, current_year)
     
-    # 2. Historical context (broader search)
+    # 2. Historical context (deeper, multiple angles)
     research["historical_context"] = _search_historical_context(topic, country)
     
-    # 3. Statistics and data
+    # 3. Statistics and economic data
     research["statistics"] = _search_statistics(topic, country)
     
-    # 4. Generate summary using AI
-    research["summary"] = _generate_research_summary(research)
+    # 4. Expert analysis and opinion pieces
+    research["expert_analysis"] = _search_expert_analysis(topic, country)
+    
+    # 5. Generate RAW FACTS compilation (no narrative, just facts)
+    research["raw_facts"] = _compile_raw_facts(research)
     
     return research
 
 
-def _search_recent_news(topic: str, country: Optional[str]) -> List[Dict]:
-    """Search for recent news on the topic."""
-    query = f"{topic} {country or ''} news 2024"
-    return _serper_search(query, search_type="news", num=8)
+def _search_recent_news(topic: str, country: Optional[str], year: int) -> List[Dict]:
+    """Search for recent news - CURRENT YEAR."""
+    search_term = country or topic
+    
+    # Multiple queries for comprehensive coverage
+    queries = [
+        f"{search_term} economy {year} latest",
+        f"{search_term} crisis news {year}",
+        f"{search_term} economic policy {year}",
+        f"{search_term} financial news today",
+    ]
+    
+    all_results = []
+    for query in queries:
+        results = _serper_search(query, search_type="news", num=5)
+        all_results.extend(results)
+    
+    # Deduplicate by title
+    seen = set()
+    unique = []
+    for r in all_results:
+        key = r.get("title", "")[:50].lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(r)
+    
+    return unique[:12]  # Return up to 12 unique articles
 
 
 def _search_historical_context(topic: str, country: Optional[str]) -> List[Dict]:
-    """Search for historical context and background."""
+    """Search for historical context and background - MULTIPLE ANGLES."""
+    search_term = country or topic
+    
     queries = [
-        f"{country or topic} economic history",
-        f"why {country or topic} crisis origin",
-        f"{country or topic} problem started when"
+        f"{search_term} economic history timeline",
+        f"{search_term} economy how it started",
+        f"{search_term} economic crisis origin cause",
+        f"{search_term} economy 1990s 2000s background",
+        f"why {search_term} economy collapsed history",
     ]
     
-    results = []
-    for q in queries[:2]:
-        results.extend(_serper_search(q, search_type="search", num=5))
-    return results
+    all_results = []
+    for q in queries:
+        results = _serper_search(q, search_type="search", num=4)
+        all_results.extend(results)
+    
+    return all_results[:10]
 
 
 def _search_statistics(topic: str, country: Optional[str]) -> List[Dict]:
-    """Search for statistics and data."""
-    query = f"{country or topic} GDP debt statistics data"
-    return _serper_search(query, search_type="search", num=5)
+    """Search for statistics and economic data."""
+    search_term = country or topic
+    
+    queries = [
+        f"{search_term} GDP debt statistics",
+        f"{search_term} inflation rate data",
+        f"{search_term} unemployment poverty statistics",
+        f"{search_term} economic indicators World Bank IMF",
+    ]
+    
+    all_results = []
+    for q in queries:
+        results = _serper_search(q, search_type="search", num=3)
+        all_results.extend(results)
+    
+    return all_results[:8]
+
+
+def _search_expert_analysis(topic: str, country: Optional[str]) -> List[Dict]:
+    """Search for expert analysis and opinion pieces."""
+    search_term = country or topic
+    
+    queries = [
+        f"{search_term} economy analysis expert",
+        f"{search_term} economic outlook forecast",
+        f"{search_term} economist opinion",
+    ]
+    
+    all_results = []
+    for q in queries:
+        results = _serper_search(q, search_type="search", num=3)
+        all_results.extend(results)
+    
+    return all_results[:6]
 
 
 def _serper_search(query: str, search_type: str = "search", num: int = 10) -> List[Dict]:
@@ -127,53 +198,81 @@ def _serper_search(query: str, search_type: str = "search", num: int = 10) -> Li
         return []
 
 
-def _generate_research_summary(research: Dict) -> str:
-    """Generate AI summary of research findings."""
+def _compile_raw_facts(research: Dict) -> str:
+    """Compile raw facts from research - NO narrative, just facts and data."""
     if not GEMINI_API_KEY:
-        return "Research compilation complete. No AI summary available."
+        return "Research compilation complete. No AI processing available."
     
-    # Compile research text
+    # Compile all research text
+    source_text = ""
+    if research.get("source_article"):
+        source_text = f"ORIGINAL TRIGGER ARTICLE: {research['source_article'].get('title', '')}: {research['source_article'].get('snippet', '')}\n\n"
+    
     news_text = "\n".join([
-        f"- {n['title']}: {n['snippet']}"
-        for n in research["recent_news"][:5]
+        f"- [{n.get('date', 'Recent')}] {n['title']}: {n['snippet']}"
+        for n in research["recent_news"][:10]
     ])
     
     history_text = "\n".join([
         f"- {h['title']}: {h['snippet']}"
-        for h in research["historical_context"][:5]
+        for h in research["historical_context"][:8]
     ])
     
     stats_text = "\n".join([
-        f"- {s['title']}: {s['snippet']}"
-        for s in research["statistics"][:3]
+        f"- {s['snippet']}"
+        for s in research["statistics"][:6]
     ])
     
-    prompt = f"""Summarize this research for a YouTube video script about "{research['topic']}".
+    expert_text = "\n".join([
+        f"- {e['title']}: {e['snippet']}"
+        for e in research.get("expert_analysis", [])[:4]
+    ])
+    
+    prompt = f"""Extract RAW FACTS from this research about "{research['topic']}".
 
-RECENT NEWS:
+{source_text}
+RECENT NEWS (Current year):
 {news_text}
 
 HISTORICAL CONTEXT:
 {history_text}
 
-STATISTICS:
+STATISTICS & DATA:
 {stats_text}
 
-Provide a 300-word summary covering:
-1. The current situation (what's happening now)
-2. The historical origin (how did this start, go back 20-50 years)
-3. Key statistics and numbers to cite
-4. The main "story" or narrative arc
+EXPERT ANALYSIS:
+{expert_text}
 
-Be factual. Include specific numbers and dates where available."""
+INSTRUCTIONS:
+1. Extract ONLY verifiable facts, numbers, dates, and quotes
+2. DO NOT create a narrative or story structure
+3. DO NOT include opinions or interpretations
+4. Group facts into categories: CURRENT EVENTS, HISTORY, STATISTICS, KEY FIGURES
+5. Each fact should be one line
+6. Include specific numbers, percentages, dates wherever available
+7. If something is uncertain, note it as "reportedly" or "allegedly"
+
+Format as:
+## CURRENT EVENTS (What's happening NOW)
+- Fact 1
+- Fact 2...
+
+## HISTORY (How we got here)
+- Fact 1...
+
+## STATISTICS (Numbers and data)
+- Fact 1...
+
+## KEY FIGURES (People, organizations)
+- Fact 1..."""
 
     try:
         model = genai.GenerativeModel("gemini-2.0-flash")
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        print(f"AI summary error: {e}")
-        return "Research compiled. AI summary failed."
+        print(f"AI facts compilation error: {e}")
+        return "Research compiled. AI processing failed."
 
 
 def format_research_for_script(research: Dict) -> str:
@@ -182,21 +281,26 @@ def format_research_for_script(research: Dict) -> str:
 Country: {research.get('country', 'N/A')}
 Date: {research['timestamp']}
 
-## Summary
-{research['summary']}
+## Raw Facts
+{research.get('raw_facts', research.get('summary', 'No summary available'))}
 
-## Recent News Headlines
+## Recent News Headlines ({len(research['recent_news'])} articles)
 """
-    for news in research["recent_news"][:5]:
-        output += f"- {news['title']}\n"
+    for news in research["recent_news"][:8]:
+        date = news.get('date', '')
+        output += f"- [{date}] {news['title']}\n"
     
-    output += "\n## Historical Context\n"
-    for ctx in research["historical_context"][:3]:
-        output += f"- {ctx['title']}: {ctx['snippet'][:100]}...\n"
+    output += f"\n## Historical Context ({len(research['historical_context'])} sources)\n"
+    for ctx in research["historical_context"][:5]:
+        output += f"- {ctx['title']}\n"
     
-    output += "\n## Key Statistics\n"
-    for stat in research["statistics"][:3]:
+    output += f"\n## Statistics ({len(research['statistics'])} sources)\n"
+    for stat in research["statistics"][:4]:
         output += f"- {stat['snippet'][:150]}...\n"
+    
+    output += f"\n## Expert Analysis ({len(research.get('expert_analysis', []))} sources)\n"
+    for exp in research.get("expert_analysis", [])[:3]:
+        output += f"- {exp['title']}\n"
     
     return output
 
@@ -205,4 +309,4 @@ if __name__ == "__main__":
     # Test
     print("Testing research agent...")
     research = deep_research("Germany energy crisis", "Germany")
-    print(f"\nSummary:\n{research['summary'][:500]}...")
+    print(f"\nRaw Facts:\n{research['raw_facts'][:500]}...")
