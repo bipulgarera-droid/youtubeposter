@@ -76,24 +76,31 @@ def crop_to_youtube(image: Image.Image) -> Image.Image:
     original_aspect = original_width / original_height
     
     # COVER-FIT: Scale to fill, then crop to exact size
+    # Add 1% safety margin to ensure we cover edges completely (prevents single-pixel white lines)
+    SAFETY_MARGIN = 1.01
+    
     if original_aspect > YOUTUBE_ASPECT:
         # Image is wider: scale by height to fill, then crop width
-        scale_factor = YOUTUBE_HEIGHT / original_height
+        scale_factor = (YOUTUBE_HEIGHT / original_height) * SAFETY_MARGIN
         new_width = int(original_width * scale_factor)
-        new_height = YOUTUBE_HEIGHT
-        resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-        # Crop excess width from center
-        left = (new_width - YOUTUBE_WIDTH) // 2
-        cropped = resized.crop((left, 0, left + YOUTUBE_WIDTH, YOUTUBE_HEIGHT))
-    else:
-        # Image is taller: scale by width to fill, then crop height
-        scale_factor = YOUTUBE_WIDTH / original_width
-        new_width = YOUTUBE_WIDTH
         new_height = int(original_height * scale_factor)
         resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-        # Crop excess height from center
+        
+        # Crop excess width from center
+        left = (new_width - YOUTUBE_WIDTH) // 2
         top = (new_height - YOUTUBE_HEIGHT) // 2
-        cropped = resized.crop((0, top, YOUTUBE_WIDTH, top + YOUTUBE_HEIGHT))
+        cropped = resized.crop((left, top, left + YOUTUBE_WIDTH, top + YOUTUBE_HEIGHT))
+    else:
+        # Image is taller: scale by width to fill, then crop height
+        scale_factor = (YOUTUBE_WIDTH / original_width) * SAFETY_MARGIN
+        new_width = int(original_width * scale_factor)
+        new_height = int(original_height * scale_factor)
+        resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        # Crop excess height from center
+        left = (new_width - YOUTUBE_WIDTH) // 2
+        top = (new_height - YOUTUBE_HEIGHT) // 2
+        cropped = resized.crop((left, top, left + YOUTUBE_WIDTH, top + YOUTUBE_HEIGHT))
     
     # Validate final dimensions
     if cropped.size != (YOUTUBE_WIDTH, YOUTUBE_HEIGHT):
@@ -170,7 +177,7 @@ def generate_chunk_image(chunk_text: str, output_path: str, chunk_index: int = 0
     )
     
     # Add negative prompt protection
-    full_prompt += ", SINGLE UNIFIED SCENE ONLY - no split panels, no collage, no text, no words"
+    full_prompt += ", SINGLE UNIFIED SCENE ONLY - no split panels, no collage, no text, no words, no white bars, no white padding"
 
     print(f"   🎨 Generating image ({style_id}/{mood})...")
     
