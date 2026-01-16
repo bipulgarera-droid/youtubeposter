@@ -22,19 +22,11 @@ if GEMINI_API_KEY:
 # Default narrative structure
 DEFAULT_BEATS = [
     {
-        "id": "intro",
-        "name": "Credibility Intro",
-        "word_target": 100,
-        "purpose": "Establish narrator authority, explain AI voice, promise unique insider access",
-        "required_elements": ["years of experience (12+ years)", "reason for AI voice (privacy/speed)", "unique data access others don't have", "anti-mainstream positioning"],
-        "ends_with": "transition to the urgent news hook"
-    },
-    {
         "id": "hook",
         "name": "Hook",
         "word_target": 150,
-        "purpose": "Grab attention with urgency, time anchor, and a hint at hidden truth",
-        "required_elements": ["time anchor", "personal stake", "mainstream contradiction"],
+        "purpose": "Grab attention immediately with a 'Imagine' scenario or shocking fact. NO INTROS.",
+        "required_elements": ["Start with 'Imagine' or direct hook", "time anchor", "personal stake", "mainstream contradiction"],
         "ends_with": "open loop that promises revelation"
     },
     {
@@ -135,7 +127,9 @@ ANTI-REPETITION (CRITICAL):
 - Each beat should feel like PROGRESS, not circling back
 
 FORBIDDEN:
-- NEVER use asterisks (*) for any purpose - no bold, no emphasis, no bullets, no markdown
+- NEVER mention "AI voice", "algorithm", "channel", "subscribers", or "viewers"
+- NEVER say "join me", "in this video", "welcome back", "click subscribe"
+- NEVER use asterisks (*) - no bold, no emphasis, no bullets, no markdown
 - NEVER use underscores (_) for emphasis
 - NEVER use hashtags (#) for headers
 - Use plain text only - this is a spoken script for text-to-speech
