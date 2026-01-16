@@ -315,25 +315,49 @@ class NewVideoPipeline:
         )
     
     def _create_title_from_topic(self, topic: str) -> str:
-        """Create title using title_style patterns."""
-        # Simple pattern matching - will be enhanced
-        if "crisis" in topic.lower():
-            return f"Why {topic} (The Hidden Truth)"
-        elif "rich" in topic.lower() or "success" in topic.lower():
-            return f"How {topic} (And What We Can Learn)"
+        """
+        Create title using title_style patterns.
+        If topic already has parenthetical (e.g., from trend_scanner), return as-is.
+        """
+        # If already formatted with parenthetical, return as-is
+        if '(' in topic and topic.strip().endswith(')'):
+            return topic
+        
+        # Otherwise, wrap with appropriate pattern based on content
+        topic_lower = topic.lower()
+        
+        if any(w in topic_lower for w in ["crisis", "collapse", "failing", "broken", "dying"]):
+            return f"Why {topic}'s Economy is COLLAPSING (The Hidden Truth)"
+        elif any(w in topic_lower for w in ["rich", "success", "boom", "miracle"]):
+            return f"How {topic} Actually Got RICH (The Real Reason)"
+        elif any(w in topic_lower for w in ["poor", "poorer", "decline"]):
+            return f"Why {topic} is POORER Than You Think (The Economic Truth)"
         else:
-            return f"Why {topic} is Worse Than You Think (The Real Story)"
+            # Default: The REAL TRUTH pattern
+            return f"The REAL TRUTH About {topic}'s Economy (Here's Why)"
     
     async def _regenerate_title(self):
         """Regenerate title with different pattern."""
-        topic = self.state["topic"]
-        # Rotate through patterns
-        patterns = [
-            f"The Slow DEATH of {topic} (And What Comes Next)",
-            f"Why {topic} Can't Be Fixed (The Fatal Flaw)",
-            f"How {topic} Changed Everything (The Untold Story)"
-        ]
+        topic = self.state.get("raw_topic", self.state["topic"])
+        country = self.state.get("country", "")
+        
+        # Get fresh patterns - never stack parentheticals
         import random
+        if country:
+            patterns = [
+                f"The REAL TRUTH About {country}'s Economy (The Hidden Crisis)",
+                f"Why {country}'s Economy is COLLAPSING (The 5 Fatal Wounds)",
+                f"Why {country} Can't Grow (The Structural Trap)",
+                f"The Slow DEATH of {country}'s Economy (And What Comes Next)",
+                f"Why {country} is POORER Than You Think (The Economic Truth)",
+            ]
+        else:
+            patterns = [
+                f"The REAL TRUTH About {topic} (Here's Why)",
+                f"Why {topic} is Worse Than You Think (The Hidden Truth)",
+                f"The END of {topic} (And What Comes Next)",
+            ]
+        
         self.state["title"] = random.choice(patterns)
         
         await self.send_keyboard(

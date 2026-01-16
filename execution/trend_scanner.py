@@ -262,8 +262,13 @@ def _generate_dramatic_title(headline: str, country: Optional[str], text: str) -
     
     # =================================================
     # PATTERN 2: How X Got RICH / Became INSANELY Rich
+    # Use ONLY for genuinely positive success stories
+    # Check for negative context first to avoid false positives
     # =================================================
-    if any(w in text_lower for w in ["rich", "wealthy", "prosperity", "boom", "growth", "success"]):
+    negative_words = ["crisis", "collapse", "failing", "decline", "headwind", "recession", "threat", "disaster", "dying", "death", "broken"]
+    has_negative = any(w in text_lower for w in negative_words)
+    
+    if not has_negative and any(w in text_lower for w in ["rich", "wealthy", "prosperity", "boom", "miracle", "success"]):
         if country:
             hooks = [
                 "And Why They Don't Spend It",
