@@ -7,6 +7,7 @@ Handles OAuth 2.0 authentication and video upload to YouTube.
 import os
 import json
 import pickle
+import tempfile
 from pathlib import Path
 from typing import Dict, Optional, List
 
@@ -30,13 +31,50 @@ TOKEN_FILE = BASE_DIR / 'youtube_token.pickle'
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
 
+def _get_client_config() -> Optional[Dict]:
+    """Get client config from file or environment variable."""
+    # First try file
+    if CLIENT_SECRETS_FILE.exists():
+        with open(CLIENT_SECRETS_FILE) as f:
+            return json.load(f)
+    
+    # Then try environment variable
+    env_secrets = os.environ.get('GOOGLE_CLIENT_SECRETS')
+    if env_secrets:
+        try:
+            return json.loads(env_secrets)
+        except json.JSONDecodeError:
+            print("⚠️ GOOGLE_CLIENT_SECRETS env var is not valid JSON")
+            return None
+    
+    return None
+
+
+def _get_redirect_uri() -> str:
+    """Get the appropriate redirect URI based on environment."""
+    # Check if we're on Railway (has RAILWAY_STATIC_URL or similar)
+    railway_url = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
+    if railway_url:
+        return f"https://{railway_url}/oauth2callback"
+    
+    # Check for custom URL in env
+    custom_url = os.environ.get('OAUTH_REDIRECT_URI')
+    if custom_url:
+        return custom_url
+    
+    # Default to localhost
+    return 'http://localhost:5001/oauth2callback'
+
+
 def check_dependencies() -> Dict:
     """Check if required dependencies are installed."""
+    config = _get_client_config()
     return {
         'google_api_available': GOOGLE_API_AVAILABLE,
-        'client_secrets_exists': CLIENT_SECRETS_FILE.exists(),
+        'client_secrets_exists': config is not None,
         'token_exists': TOKEN_FILE.exists()
     }
+
 
 
 def get_auth_url() -> Dict:
@@ -47,14 +85,17 @@ def get_auth_url() -> Dict:
     if not GOOGLE_API_AVAILABLE:
         return {'success': False, 'error': 'Google API libraries not installed'}
     
-    if not CLIENT_SECRETS_FILE.exists():
-        return {'success': False, 'error': 'client_secrets.json not found'}
+    client_config = _get_client_config()
+    if not client_config:
+        return {'success': False, 'error': 'client_secrets.json not found and GOOGLE_CLIENT_SECRETS env var not set'}
+    
+    redirect_uri = _get_redirect_uri()
     
     try:
-        flow = Flow.from_client_secrets_file(
-            str(CLIENT_SECRETS_FILE),
+        flow = Flow.from_client_config(
+            client_config,
             scopes=SCOPES,
-            redirect_uri='http://localhost:5001/oauth2callback'
+            redirect_uri=redirect_uri
         )
         
         auth_url, state = flow.authorization_url(
@@ -66,7 +107,8 @@ def get_auth_url() -> Dict:
         return {
             'success': True,
             'auth_url': auth_url,
-            'state': state
+            'state': state,
+            'redirect_uri': redirect_uri
         }
     except Exception as e:
         return {'success': False, 'error': str(e)}
@@ -79,11 +121,17 @@ def handle_oauth_callback(authorization_response: str) -> Dict:
     if not GOOGLE_API_AVAILABLE:
         return {'success': False, 'error': 'Google API libraries not installed'}
     
+    client_config = _get_client_config()
+    if not client_config:
+        return {'success': False, 'error': 'client_secrets.json not found and GOOGLE_CLIENT_SECRETS env var not set'}
+    
+    redirect_uri = _get_redirect_uri()
+    
     try:
-        flow = Flow.from_client_secrets_file(
-            str(CLIENT_SECRETS_FILE),
+        flow = Flow.from_client_config(
+            client_config,
             scopes=SCOPES,
-            redirect_uri='http://localhost:5001/oauth2callback'
+            redirect_uri=redirect_uri
         )
         
         flow.fetch_token(authorization_response=authorization_response)
