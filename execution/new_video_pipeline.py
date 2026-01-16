@@ -201,6 +201,10 @@ class NewVideoPipeline:
             await self._generate_outline()
             return True
         
+        elif callback_data == "newvideo_research_regen":
+            await self._regenerate_research()
+            return True
+        
         # Step 5: Outline approval → Generate Script
         elif callback_data == "newvideo_outline_approve":
             await self._generate_script()
@@ -239,9 +243,26 @@ class NewVideoPipeline:
             await self._add_subtitles()
             return True
         
-        # Step 9: Subtitles done - generate metadata
+        elif callback_data == "newvideo_video_regen":
+            await self._regenerate_video()
+            return True
+        
+        # Step 9: Subtitles approval
         elif callback_data == "newvideo_subtitles_approve":
             await self._generate_metadata()
+            return True
+        
+        elif callback_data == "newvideo_subtitles_regen":
+            await self._regenerate_subtitles()
+            return True
+        
+        # Step 10: Metadata approval
+        elif callback_data == "newvideo_metadata_approve":
+            await self._generate_thumbnail()
+            return True
+        
+        elif callback_data == "newvideo_metadata_regen":
+            await self._regenerate_metadata()
             return True
         
         # Step 10: Thumbnail approval
@@ -448,10 +469,16 @@ class NewVideoPipeline:
             f"📚 **Research Facts:**\n\n{display_summary}...\n\nProceed to outline generation?",
             [
                 ("✅ Approve Research", "newvideo_research_approve"),
+                ("🔄 Regenerate", "newvideo_research_regen"),
                 ("❌ Cancel", "newvideo_cancel")
             ]
         )
         self.state["step"] = "approving_research"
+    
+    async def _regenerate_research(self):
+        """Regenerate research."""
+        await self.send_message("🔄 Regenerating research...")
+        await self._start_research()
     
     async def _generate_outline(self):
         """Generate 7-chapter outline from research."""
@@ -620,24 +647,39 @@ class NewVideoPipeline:
         self.state["subtitled_video_path"] = result.get("subtitled_video")
         self.state["srt_path"] = result.get("srt_path")
         
+        # TODO: Send video file to Telegram for preview
+        # For now just show path
         await self.send_keyboard(
-            "✅ **Subtitles Added**\n\nProceed to thumbnail and metadata?",
+            f"✅ **Subtitled Video Generated**\n\n"
+            f"Path: `{self.state['subtitled_video_path']}`\n\n"
+            f"Approve subtitles or regenerate?",
             [
-                ("✅ Continue", "newvideo_subtitles_approve"),
+                ("✅ Approve Subtitles", "newvideo_subtitles_approve"),
+                ("🔄 Regenerate", "newvideo_subtitles_regen"),
             ]
         )
-        self.state["step"] = "subtitles_done"
+        self.state["step"] = "approving_subtitles"
+    
+    async def _regenerate_video(self):
+        """Regenerate video from images and audio."""
+        await self.send_message("🔄 Regenerating video...")
+        await self._generate_video()
+    
+    async def _regenerate_subtitles(self):
+        """Regenerate subtitles."""
+        await self.send_message("🔄 Regenerating subtitles...")
+        await self._add_subtitles()
     
     async def _generate_metadata(self):
-        """Generate tags, description, and thumbnail."""
-        await self.send_message("📊 Generating metadata and thumbnail...")
+        """Generate tags and description (separate from thumbnail)."""
+        await self.send_message("📊 Generating tags and description...")
         
-        # Generate timestamps
-        if self.state["srt_path"]:
+        # Generate timestamps from SRT
+        if self.state.get("srt_path"):
             timestamps = generate_timestamps_from_srt(self.state["srt_path"])
             self.state["timestamps"] = timestamps
         
-        # Generate full metadata
+        # Generate full metadata (tags, description with timestamps)
         metadata = generate_full_metadata(
             script=self.state["script"],
             title=self.state["title"],
@@ -646,7 +688,31 @@ class NewVideoPipeline:
         self.state["description"] = metadata.get("description")
         self.state["tags"] = metadata.get("tags", [])
         
-        # Generate thumbnail
+        # Show for approval
+        desc_preview = self.state["description"][:500] if self.state["description"] else "No description"
+        tags_preview = ", ".join(self.state["tags"][:8]) if self.state["tags"] else "No tags"
+        
+        await self.send_keyboard(
+            f"📊 **Metadata Generated**\n\n"
+            f"**Tags:** {tags_preview}...\n\n"
+            f"**Description Preview:**\n```\n{desc_preview}...\n```\n\n"
+            f"Approve metadata?",
+            [
+                ("✅ Approve Metadata", "newvideo_metadata_approve"),
+                ("🔄 Regenerate", "newvideo_metadata_regen"),
+            ]
+        )
+        self.state["step"] = "approving_metadata"
+    
+    async def _regenerate_metadata(self):
+        """Regenerate metadata."""
+        await self.send_message("🔄 Regenerating metadata...")
+        await self._generate_metadata()
+    
+    async def _generate_thumbnail(self):
+        """Generate thumbnail (separate step)."""
+        await self.send_message("🖼️ Generating thumbnail...")
+        
         thumbnail_path = os.path.join(self.output_dir, "thumbnail.jpg")
         generate_thumbnail(
             title=self.state["title"],
@@ -658,11 +724,11 @@ class NewVideoPipeline:
         
         await self.send_keyboard(
             f"🖼️ **Thumbnail Generated**\n\n"
-            f"**Tags:** {', '.join(self.state['tags'][:5])}...\n\n"
+            f"Path: `{thumbnail_path}`\n\n"
             f"Approve thumbnail?",
             [
-                ("✅ Approve", "newvideo_thumbnail_approve"),
-                ("🔄 Regenerate", "newvideo_thumbnail_regen")
+                ("✅ Approve Thumbnail", "newvideo_thumbnail_approve"),
+                ("🔄 Regenerate", "newvideo_thumbnail_regen"),
             ]
         )
         self.state["step"] = "approving_thumbnail"
@@ -670,7 +736,7 @@ class NewVideoPipeline:
     async def _regenerate_thumbnail(self):
         """Regenerate thumbnail."""
         await self.send_message("🔄 Regenerating thumbnail...")
-        await self._generate_metadata()
+        await self._generate_thumbnail()
     
     async def _prepare_upload(self):
         """Prepare files for upload and show final confirmation."""
