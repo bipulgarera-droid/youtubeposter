@@ -691,7 +691,7 @@ class NewVideoPipeline:
     
     async def _generate_script(self):
         """Generate the video script."""
-        await self.send_message("📝 Generating 4,500-word script (~22 min video)...")
+        await self.send_message("📝 Generating 4,500-word script (~30 min video)...")
         self.state["step"] = "generating_script"
         
         research_text = format_research_for_script(self.state["research"])
@@ -708,7 +708,7 @@ class NewVideoPipeline:
             result = generate_narrative_script(
                 research_data=full_context,
                 topic=self.state["title"],  # Use title as topic
-                target_minutes=22  # ~4500 words
+                target_minutes=30  # 4500 words (150 words/min × 30 min)
             )
             
             if not result or not result.get("full_script"):
