@@ -732,10 +732,10 @@ class NewVideoPipeline:
             for s in styles
         ]
         
-        msg = "🎨 **Select Video Style:**\n\n"
+        msg = "🎨 Select Video Style:\n\n"
         for s in styles:
-            # Use simple formatting to avoid markdown errors
-            msg += f"🔸 {s['name']}\n{s['description']}\n\n"
+            # NO markdown to avoid parsing errors
+            msg += f"- {s['name']}\n{s['description']}\n\n"
         
         await self.send_keyboard(msg, options)
     
