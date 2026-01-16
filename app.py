@@ -3048,6 +3048,10 @@ def api_select_videos():
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5001))
+    # Detect Railway/production environment
+    is_production = os.getenv('RAILWAY_ENVIRONMENT') is not None
     print(f"\n🎬 YouTube Niche Verifier starting...")
-    print(f"📍 Open http://localhost:{port} in your browser\n")
-    app.run(debug=True, port=port)
+    print(f"📍 Running on {'Railway' if is_production else 'localhost'}:{port}\n")
+    # Bind to 0.0.0.0 for Docker/Railway, disable debug in production
+    app.run(host='0.0.0.0', port=port, debug=not is_production)
+
