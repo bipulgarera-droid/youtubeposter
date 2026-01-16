@@ -34,11 +34,12 @@ from execution.style_selector import get_style_options, apply_style_to_prompt, D
 from execution.file_renamer import rename_output_files, generate_topic_slug, extract_topic_from_title
 from execution.generate_outline import generate_outline, format_outline_for_telegram, format_outline_for_script
 
+
 # Import existing generators (with try/except for missing modules)
 try:
-    from execution.generate_script import generate_script
+    from execution.generate_narrative_script import generate_narrative_script
 except ImportError:
-    generate_script = None
+    generate_narrative_script = None
 
 try:
     from execution.generate_ai_images import generate_images_for_script
@@ -517,7 +518,7 @@ class NewVideoPipeline:
     
     async def _generate_script(self):
         """Generate the video script."""
-        await self.send_message("📝 Generating 4,500-word script (7 chapters)...")
+        await self.send_message("📝 Generating 4,500-word script (~22 min video)...")
         self.state["step"] = "generating_script"
         
         research_text = format_research_for_script(self.state["research"])
@@ -529,35 +530,46 @@ class NewVideoPipeline:
         
         full_context = research_text + outline_text
         
-        # Generate script using style guide
-        script_path = os.path.join(self.output_dir, "script.txt")
-        script = generate_script(
-            topic=self.state["topic"],
-            title=self.state["title"],
-            research=full_context,
-            output_path=script_path,
-            target_words=4500
-        )
-        
-        self.state["script"] = script
-        self.state["script_path"] = script_path
-        
-        # Show preview
-        preview = script[:2000] if len(script) > 2000 else script
-        word_count = len(script.split())
-        
-        await self.send_keyboard(
-            f"📜 **Script Generated**\n\n"
-            f"**Word Count:** {word_count}\n"
-            f"**Title:** {self.state['title']}\n\n"
-            f"**Preview:**\n```\n{preview}...\n```\n\n"
-            f"Approve script?",
-            [
-                ("✅ Approve Script", "newvideo_script_approve"),
-                ("🔄 Regenerate", "newvideo_script_regen")
-            ]
-        )
-        self.state["step"] = "approving_script"
+        try:
+            # Generate script using narrative engine (accepts research_data: str)
+            result = generate_narrative_script(
+                research_data=full_context,
+                topic=self.state["title"],  # Use title as topic
+                target_minutes=22  # ~4500 words
+            )
+            
+            if not result or not result.get("full_script"):
+                await self.send_message("❌ Script generation failed. Try regenerating.")
+                return
+            
+            script = result.get("full_script", "")
+            word_count = result.get("total_words", len(script.split()))
+            
+            # Save to file
+            script_path = os.path.join(self.output_dir, "script.txt")
+            with open(script_path, "w") as f:
+                f.write(script)
+            
+            self.state["script"] = script
+            self.state["script_path"] = script_path
+            
+            # Show preview
+            preview = script[:2000] if len(script) > 2000 else script
+            
+            await self.send_keyboard(
+                f"📜 **Script Generated**\n\n"
+                f"**Word Count:** {word_count}\n"
+                f"**Title:** {self.state['title']}\n\n"
+                f"**Preview:**\n```\n{preview}...\n```\n\n"
+                f"Approve script?",
+                [
+                    ("✅ Approve Script", "newvideo_script_approve"),
+                    ("🔄 Regenerate", "newvideo_script_regen")
+                ]
+            )
+            self.state["step"] = "approving_script"
+        except Exception as e:
+            await self.send_message(f"❌ Script generation error: {str(e)}\n\nUse the Regenerate button to retry.")
     
     async def _regenerate_script(self):
         """Regenerate script with different approach."""
