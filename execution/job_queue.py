@@ -58,6 +58,33 @@ def get_job_status(job_id: str) -> Optional[Dict]:
         return json.loads(data)
     return None
 
+
+def cancel_job(job_id: str) -> bool:
+    """Cancel a queued or running job."""
+    try:
+        from rq.job import Job
+        redis = get_redis_connection()
+        
+        # Try to find and cancel the RQ job
+        for queue_name in ['high', 'default', 'low']:
+            queue = get_queue(queue_name)
+            for job in queue.jobs:
+                if job_id in str(job.args) or job_id in str(job.kwargs):
+                    job.cancel()
+                    set_job_status(job_id, JobStatus.FAILED, 0, "Job cancelled by user")
+                    return True
+        
+        # If job is running, mark it as cancelled (worker will check)
+        status = get_job_status(job_id)
+        if status and status['status'] in ['pending', 'running']:
+            set_job_status(job_id, JobStatus.FAILED, 0, "Job cancelled by user")
+            return True
+        
+        return False
+    except Exception as e:
+        print(f"Error cancelling job: {e}")
+        return False
+
 def queue_full_pipeline(youtube_url: str, topic: Optional[str] = None,
                         telegram_chat_id: Optional[int] = None) -> str:
     """

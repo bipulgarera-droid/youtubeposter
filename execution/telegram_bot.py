@@ -28,7 +28,8 @@ from telegram.ext import (
 from execution.job_queue import (
     queue_full_pipeline,
     queue_news_pipeline,
-    get_job_status
+    get_job_status,
+    cancel_job
 )
 
 # Configure logging
@@ -156,6 +157,24 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message)
 
 
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /cancel command - cancel a running job."""
+    if not context.args:
+        await update.message.reply_text("Usage: /cancel <job_id>")
+        return
+    
+    job_id = context.args[0]
+    
+    try:
+        success = cancel_job(job_id)
+        if success:
+            await update.message.reply_text(f"✅ Job {job_id} cancelled successfully!")
+        else:
+            await update.message.reply_text(f"❌ Could not cancel job {job_id}. It may have already completed or doesn't exist.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error cancelling job: {str(e)}")
+
+
 async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /digest command - get daily news digest."""
     await update.message.reply_text("🔄 Fetching today's top stories...")
@@ -232,6 +251,7 @@ def main():
     application.add_handler(CommandHandler("news", news_command))
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("digest", digest_command))
+    application.add_handler(CommandHandler("cancel", cancel_command))
     
     # Handle plain URLs
     application.add_handler(MessageHandler(
