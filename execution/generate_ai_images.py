@@ -23,6 +23,17 @@ except ImportError:
 
 from PIL import Image
 
+# Import style selector
+try:
+    from execution.style_selector import apply_style_to_prompt, auto_select_mood, auto_select_scene_type, DEFAULT_STYLE
+except ImportError:
+    # Fallback if running standalone
+    print("⚠️ Style selector not found, using defaults")
+    apply_style_to_prompt = lambda p, s, m, t: f"{s} style: {p}"
+    auto_select_mood = lambda t: "bright_sunny"
+    auto_select_scene_type = lambda t: "street_wide"
+    DEFAULT_STYLE = "ghibli_cartoon"
+
 load_dotenv()
 
 # Constants
@@ -130,7 +141,7 @@ Respond with ONLY the visual description, nothing else. Keep it under 40 words."
         return f"a cinematic documentary scene depicting: {chunk_text}"
 
 
-def generate_chunk_image(chunk_text: str, output_path: str, chunk_index: int = 0) -> dict:
+def generate_chunk_image(chunk_text: str, output_path: str, chunk_index: int = 0, style_id: str = DEFAULT_STYLE) -> dict:
     """
     Generate an AI image for a script chunk.
     
@@ -146,19 +157,22 @@ def generate_chunk_image(chunk_text: str, output_path: str, chunk_index: int = 0
     metaphor = get_visual_metaphor(chunk_text)
     print(f"   💡 Metaphor: {metaphor[:80]}...")
     
-    # Build the full image prompt with style constraints
-    full_prompt = f"""Impressionist oil painting style, {metaphor}, 
-warm color palette with rich gold and teal-turquoise tones, 
-soft visible brushstrokes, classical vintage aesthetic, 
-cinematic wide composition suitable for YouTube video background,
-horizontal landscape format 16:9 aspect ratio,
-SINGLE UNIFIED SCENE ONLY - no split panels, no multiple images, no collage, no side-by-side compositions,
-no borders, no frames, no black bars, no letterboxing,
-no text or words or letters or numbers in the image,
-highly detailed, professional art quality, dramatic lighting,
-fill the entire canvas with one cohesive image"""
+    # Auto-select mood and scene type
+    mood = auto_select_mood(chunk_text)
+    scene_type = auto_select_scene_type(chunk_text)
+    
+    # Build prompt using style selector
+    full_prompt = apply_style_to_prompt(
+        base_prompt=metaphor,
+        style_id=style_id,
+        mood_id=mood,
+        scene_type=scene_type
+    )
+    
+    # Add negative prompt protection
+    full_prompt += ", SINGLE UNIFIED SCENE ONLY - no split panels, no collage, no text, no words"
 
-    print(f"   🎨 Generating image...")
+    print(f"   🎨 Generating image ({style_id}/{mood})...")
     
     try:
         response = client.models.generate_content(
@@ -247,7 +261,7 @@ def split_script_to_chunks(script: str, max_words: int = 25, max_sentences: int 
     return chunks
 
 
-def generate_all_images(script: str, output_dir: str) -> dict:
+def generate_all_images(script: str, output_dir: str, style: str = DEFAULT_STYLE) -> dict:
     """
     Generate images for all chunks in a script.
     
@@ -269,7 +283,7 @@ def generate_all_images(script: str, output_dir: str) -> dict:
         print(f"\n[{i+1}/{len(chunks)}] \"{chunk[:50]}...\"")
         
         output_path = os.path.join(output_dir, f"chunk_{i:03d}.png")
-        result = generate_chunk_image(chunk, output_path, i)
+        result = generate_chunk_image(chunk, output_path, i, style_id=style)
         result['index'] = i
         result['chunk_text'] = chunk
         results.append(result)
@@ -284,6 +298,9 @@ def generate_all_images(script: str, output_dir: str) -> dict:
         'chunks': results,
         'output_dir': output_dir
     }
+
+# Alias for pipeline compatibility
+generate_images_for_script = generate_all_images
 
 
 # CLI for testing

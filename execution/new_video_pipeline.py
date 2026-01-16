@@ -45,7 +45,8 @@ except ImportError:
 
 try:
     from execution.generate_ai_images import generate_images_for_script
-except ImportError:
+except ImportError as e:
+    print(f"⚠️ Failed to import generate_images_for_script: {e}")
     generate_images_for_script = None
 
 try:
@@ -752,6 +753,10 @@ class NewVideoPipeline:
         await self.send_message(f"🎨 Style selected: {style_id}\n\n⏳ Generating images...")
         
         # Generate images
+        if not generate_images_for_script:
+            await self.send_message("❌ Image generator module not loaded. Check server logs.")
+            return
+
         images = generate_images_for_script(
             script=self.state["script"],
             output_dir=self.output_dir,
