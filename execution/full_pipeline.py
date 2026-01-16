@@ -85,8 +85,9 @@ def run_full_pipeline(
         set_job_status(job_id, JobStatus.RUNNING, 20, "Running news research...")
         
         # Step 3: News research
-        from execution.search_news import search_news_for_topic
-        research_articles = search_news_for_topic(topic, max_results=20)
+        from execution.search_news import search_news
+        research_result = search_news(topic, num_articles=20, transcript=transcript)
+        research_articles = research_result.get('articles', []) if research_result else []
         
         # Combine research data
         research_data = f"REFERENCE TRANSCRIPT:\n{transcript}\n\n"
