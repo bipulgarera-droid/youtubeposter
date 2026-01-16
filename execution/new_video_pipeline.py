@@ -127,6 +127,7 @@ class NewVideoPipeline:
             "🎬 **New Video Pipeline**\n\nShould I scan for trending opportunities?",
             [
                 ("Yes - Scan News", "newvideo_scan_yes"),
+                ("🌍 Search by Country", "newvideo_country"),
                 ("No - I have a topic", "newvideo_scan_no"),
                 ("Evergreen Topic", "newvideo_evergreen")
             ]
@@ -148,6 +149,11 @@ class NewVideoPipeline:
         elif callback_data == "newvideo_scan_no":
             self.state["step"] = "waiting_topic_input"
             await self.send_message("📝 Enter your topic:")
+            return True
+        
+        elif callback_data == "newvideo_country":
+            self.state["step"] = "waiting_country_input"
+            await self.send_message("🌍 Enter a country name (e.g., Venezuela, France, UK):")
             return True
         
         elif callback_data == "newvideo_evergreen":
@@ -233,7 +239,12 @@ class NewVideoPipeline:
         # Handle text input
         if step == "waiting_topic_input" and user_input:
             self.state["topic"] = user_input
+            self.state["raw_topic"] = user_input  # Store raw for regeneration
             await self._generate_title()
+            return True
+        
+        if step == "waiting_country_input" and user_input:
+            await self._scan_by_country(user_input)
             return True
         
         return True
@@ -260,6 +271,39 @@ class NewVideoPipeline:
         options.append(("None of these", "newvideo_topic_none"))
         
         msg = "🔥 **Trending Topics:**\n\n"
+        for i, t in enumerate(topics):
+            msg += f"{i+1}. **{t['suggested_topic']}**\n"
+            msg += f"   └ {t['headline'][:60]}...\n\n"
+        
+        await self.send_keyboard(msg, options)
+    
+    async def _scan_by_country(self, country: str):
+        """Scan news for topics specific to a country."""
+        await self.send_message(f"🌍 Searching news for **{country}**...")
+        
+        # Store country for later use in title regeneration
+        self.state["country"] = country
+        
+        # Import the country-specific search
+        from execution.trend_scanner import scan_by_country
+        topics = scan_by_country(country)
+        
+        if not topics:
+            await self.send_message(f"No trending topics found for {country}. Try a different country.")
+            self.state["step"] = "waiting_country_input"
+            return
+        
+        self.state["trending_topics"] = topics
+        self.state["step"] = "choosing_topic"
+        
+        # Build keyboard
+        options = [
+            (f"📰 {t['suggested_topic'][:40]}", f"newvideo_topic_{i}")
+            for i, t in enumerate(topics)
+        ]
+        options.append(("None of these", "newvideo_topic_none"))
+        
+        msg = f"🌍 **Topics for {country}:**\n\n"
         for i, t in enumerate(topics):
             msg += f"{i+1}. **{t['suggested_topic']}**\n"
             msg += f"   └ {t['headline'][:60]}...\n\n"

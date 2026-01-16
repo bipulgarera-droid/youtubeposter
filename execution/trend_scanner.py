@@ -184,6 +184,68 @@ def _extract_topics(news_items: List[Dict]) -> List[Dict]:
     return topics
 
 
+def scan_by_country(country: str) -> List[Dict]:
+    """
+    Scan news for topics specific to a country.
+    
+    Args:
+        country: Country name (e.g., "Venezuela", "France", "UK")
+    
+    Returns:
+        List of 10 topic opportunities for that country
+    """
+    all_results = []
+    
+    # Country-specific queries - more varied for better results
+    queries = [
+        f"{country} economy crisis OR collapse 2025",
+        f"{country} economy latest news today",
+        f"{country} financial crisis OR debt OR deficit",
+        f"{country} government economic policy reform",
+        f"{country} currency crisis OR inflation OR recession",
+        f"{country} trade sanctions tariff",
+    ]
+    
+    for query in queries:
+        results = _search_news(query)
+        all_results.extend(results)
+    
+    # Process results with country override
+    topics = []
+    seen_headlines = set()
+    
+    for item in all_results:
+        title = item.get("title", "")
+        snippet = item.get("snippet", "")
+        link = item.get("link", "")
+        
+        # Skip duplicates
+        title_key = title.lower()[:50]
+        if title_key in seen_headlines:
+            continue
+        seen_headlines.add(title_key)
+        
+        combined = f"{title} {snippet}".lower()
+        viral_score = _calculate_viral_score(combined)
+        
+        # Force the country for these results
+        suggested_title = _generate_dramatic_title(title, country, combined)
+        
+        topics.append({
+            "headline": title,
+            "snippet": snippet[:200],
+            "source_url": link,
+            "country": country,
+            "suggested_topic": suggested_title,
+            "category": _categorize_news(combined),
+            "viral_score": viral_score
+        })
+    
+    # Sort by viral score and limit to 10
+    topics.sort(key=lambda x: x["viral_score"], reverse=True)
+    return topics[:10]
+
+
 def _calculate_viral_score(text: str) -> int:
     """Calculate how viral this topic could be."""
     score = 0
