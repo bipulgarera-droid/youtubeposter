@@ -9,7 +9,7 @@ import io
 import re
 from pathlib import Path
 from dotenv import load_dotenv
-from google import genai
+import google.generativeai as genai
 from google.genai import types
 from PIL import Image
 
