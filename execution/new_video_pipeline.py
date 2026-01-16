@@ -224,14 +224,20 @@ class NewVideoPipeline:
         """Start the pipeline - ask to scan trends."""
         self.state["step"] = "ask_opportunity"
         
+        options = [
+            ("Yes - Scan News", "newvideo_scan_yes"),
+            ("🌍 Search by Country", "newvideo_country"),
+            ("No - I have a topic", "newvideo_scan_no"),
+            ("Evergreen Topic", "newvideo_evergreen")
+        ]
+        
+        # Add Resume button if saved state exists
+        if self.has_saved_state(self.chat_id):
+            options.insert(0, ("📂 Resume Previous Session", "newvideo_resume_start"))
+            
         await self.send_keyboard(
             "🎬 **New Video Pipeline**\n\nShould I scan for trending opportunities?",
-            [
-                ("Yes - Scan News", "newvideo_scan_yes"),
-                ("🌍 Search by Country", "newvideo_country"),
-                ("No - I have a topic", "newvideo_scan_no"),
-                ("Evergreen Topic", "newvideo_evergreen")
-            ]
+            options
         )
     
     async def handle_callback(self, callback_data: str, user_input: str = None) -> bool:
@@ -280,6 +286,10 @@ class NewVideoPipeline:
         elif callback_data == "newvideo_start_fresh":
             self.clear_state()
             await self.start()
+            return True
+            
+        elif callback_data == "newvideo_resume_start":
+            await self.resume()
             return True
         
         elif callback_data.startswith("newvideo_resume_"):
@@ -724,7 +734,8 @@ class NewVideoPipeline:
         
         msg = "🎨 **Select Video Style:**\n\n"
         for s in styles:
-            msg += f"**{s['name']}**\n{s['description']}\n\n"
+            # Use simple formatting to avoid markdown errors
+            msg += f"🔸 {s['name']}\n{s['description']}\n\n"
         
         await self.send_keyboard(msg, options)
     
