@@ -141,6 +141,21 @@ class NewVideoPipeline:
         """
         step = self.state["step"]
         
+        # Handle text input FIRST (before callback_data checks)
+        if user_input and step == "waiting_topic_input":
+            self.state["topic"] = user_input
+            self.state["raw_topic"] = user_input
+            await self._generate_title()
+            return True
+        
+        if user_input and step == "waiting_country_input":
+            await self._scan_by_country(user_input)
+            return True
+        
+        # If no callback_data, nothing more to do
+        if not callback_data:
+            return True
+        
         # Step 1: Scan for opportunities
         if callback_data == "newvideo_scan_yes":
             await self._scan_trends()
@@ -235,17 +250,6 @@ class NewVideoPipeline:
         elif callback_data == "newvideo_upload_cancel":
             await self.send_message("❌ Upload cancelled. Files saved locally.")
             return False
-        
-        # Handle text input
-        if step == "waiting_topic_input" and user_input:
-            self.state["topic"] = user_input
-            self.state["raw_topic"] = user_input  # Store raw for regeneration
-            await self._generate_title()
-            return True
-        
-        if step == "waiting_country_input" and user_input:
-            await self._scan_by_country(user_input)
-            return True
         
         return True
     
