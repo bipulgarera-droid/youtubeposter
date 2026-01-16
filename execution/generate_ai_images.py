@@ -279,21 +279,58 @@ def generate_all_images(script: str, output_dir: str, style: str = DEFAULT_STYLE
     Returns:
         dict with results for each chunk
     """
+    import time
+    
     chunks = split_script_to_chunks(script)
     
     print(f"📝 Split script into {len(chunks)} chunks")
     print(f"📁 Output directory: {output_dir}")
     
     results = []
+    consecutive_failures = 0
+    MAX_CONSECUTIVE_FAILURES = 5  # Stop if 5 in a row fail
     
     for i, chunk in enumerate(chunks):
         print(f"\n[{i+1}/{len(chunks)}] \"{chunk[:50]}...\"")
         
         output_path = os.path.join(output_dir, f"chunk_{i:03d}.png")
-        result = generate_chunk_image(chunk, output_path, i, style_id=style)
+        
+        # Retry logic - try up to 3 times
+        max_retries = 3
+        result = None
+        for attempt in range(max_retries):
+            result = generate_chunk_image(chunk, output_path, i, style_id=style)
+            
+            if result.get('success'):
+                consecutive_failures = 0
+                break
+            else:
+                print(f"   ⚠️ Attempt {attempt+1}/{max_retries} failed: {result.get('error', 'Unknown')}")
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 5  # 5s, 10s, 15s
+                    print(f"   ⏳ Waiting {wait_time}s before retry...")
+                    time.sleep(wait_time)
+        
+        if not result.get('success'):
+            consecutive_failures += 1
+            print(f"   ❌ All retries failed. Consecutive failures: {consecutive_failures}")
+            
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                print(f"   🛑 Stopping: {MAX_CONSECUTIVE_FAILURES} consecutive failures")
+                # Return what we have so far
+                result = result or {'success': False, 'error': 'Max retries exceeded'}
+                result['index'] = i
+                result['chunk_text'] = chunk
+                results.append(result)
+                break
+        
         result['index'] = i
         result['chunk_text'] = chunk
         results.append(result)
+        
+        # Rate limiting: wait 2 seconds between successful images
+        if result.get('success') and i < len(chunks) - 1:
+            time.sleep(2)
     
     successful = sum(1 for r in results if r.get('success'))
     
