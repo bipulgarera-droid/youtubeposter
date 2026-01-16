@@ -170,9 +170,10 @@ def generate_beat(
     # Build context from previous beats
     previous_context = ""
     named_concepts = []
+    used_statistics = []
     
     if previous_beats:
-        previous_context = "PREVIOUSLY COVERED (DO NOT REPEAT ANY OF THIS - find fresh angles):\n"
+        previous_context = "=== PREVIOUSLY COVERED (DO NOT REPEAT ANY OF THIS) ===\n"
         for pb in previous_beats:
             summary = pb.get('summary', pb.get('text', '')[:300])
             previous_context += f"- {pb['name']}: {summary}\n"
@@ -185,13 +186,33 @@ def generate_beat(
             # Find capitalized concepts like "The Great Disconnect"
             caps = re.findall(r'The [A-Z][a-z]+ [A-Z][a-z]+', text)
             named_concepts.extend(caps)
+            
+            # Extract statistics - numbers, percentages, dates, dollar amounts
+            # Percentages like "75%", "628.8 percent"
+            percentages = re.findall(r'\d+(?:\.\d+)?(?:\s*)?(?:%|percent)', text, re.IGNORECASE)
+            used_statistics.extend(percentages)
+            # Dollar amounts like "$373 billion", "$43 billion"
+            dollars = re.findall(r'\$[\d,]+(?:\.\d+)?(?:\s*(?:billion|million|trillion))?', text, re.IGNORECASE)
+            used_statistics.extend(dollars)
+            # Years and dates like "2014", "January 3rd, 2026"
+            years = re.findall(r'\b(?:19|20)\d{2}\b', text)
+            used_statistics.extend(years)
+            dates = re.findall(r'(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d+(?:st|nd|rd|th)?(?:,?\s*\d{4})?', text, re.IGNORECASE)
+            used_statistics.extend(dates)
         
         if named_concepts:
             # Remove duplicates
             named_concepts = list(set(named_concepts))
-            previous_context += f"\nNAMED CONCEPTS ALREADY USED (DO NOT REPEAT THESE NAMES - if you need to reference the concept, use different words):\n"
+            previous_context += f"\nNAMED CONCEPTS ALREADY USED (DO NOT REPEAT THESE NAMES):\n"
             previous_context += ", ".join(named_concepts[:20])  # Limit to 20
             previous_context += "\n"
+        
+        if used_statistics:
+            # Remove duplicates and limit
+            used_statistics = list(set(used_statistics))[:30]
+            previous_context += f"\n=== STATISTICS ALREADY USED (DO NOT REPEAT THESE NUMBERS/DATES) ===\n"
+            previous_context += ", ".join(used_statistics)
+            previous_context += "\nFind NEW statistics from the research data, or discuss concepts without repeating these numbers.\n"
     
     prompt = f"""You are writing a finance/economics YouTube script in the style of high-retention documentary narration.
 
@@ -199,7 +220,7 @@ TOPIC: {topic}
 
 CURRENT BEAT: {beat['name']}
 PURPOSE: {beat['purpose']}
-WORD TARGET: EXACTLY {beat['word_target']} words. This is a HARD requirement. Not ±15%, not "around". EXACTLY {beat['word_target']} words. Count carefully before finishing.
+WORD TARGET: {beat['word_target']} words (aim for this count, ±10% is acceptable)
 MUST INCLUDE: {', '.join(beat['required_elements'])}
 MUST END WITH: {beat['ends_with']}
 
@@ -210,25 +231,43 @@ RESEARCH DATA:
 
 {STYLE_GUIDE}
 
-CRITICAL RULES:
-1. Write EXACTLY for this beat's purpose - don't cover other beats
-2. YOU MUST HIT THE WORD TARGET OF {beat['word_target']} WORDS. This is non-negotiable. If you're short, expand with more examples and details. If you're over, trim redundancy.
-3. End with a hook that makes the viewer desperate to hear the next section
-4. Do NOT include section headers or titles - just flowing prose
-5. Write for SPOKEN delivery - avoid complex sentence structures
-6. NEVER self-reference the video structure - no "in this section", "in this video", "let's talk about", "we'll cover"
-7. NEVER mention beats, sections, or video structure - flow naturally like storytelling
-8. Start directly with content - no preambles like "Let's begin" or "First, let's discuss"
+=== ANTI-REPETITION RULES (CRITICAL - VIOLATIONS WILL RUIN THE SCRIPT) ===
+1. NEVER repeat any statistic, date, percentage, or fact that was mentioned in PREVIOUSLY COVERED sections above
+2. If a number like "75% decline" or a date like "January 3rd" was used before, DO NOT use it again - find a NEW angle
+3. Each beat must introduce FRESH information and perspectives, not restate earlier points
+4. If you feel the urge to say "As we mentioned" or "Remember when we said" - STOP. Find something new instead.
+5. The viewer has already heard earlier sections. Assume they remember. Move the story FORWARD.
 
-DATA INTEGRITY (EXTREMELY IMPORTANT):
-- ONLY use specific numbers, prices, percentages, and dates that appear VERBATIM in the RESEARCH DATA above
-- If the transcript says silver is $87, use $87 - DO NOT invent a different price
-- If the news says a drop of $4.61, use $4.61 - DO NOT make up a different number
-- NEVER hallucinate or fabricate statistics, prices, dates, or figures
-- If you need a number and it's not in the research, describe the concept without a specific figure
-- Wrong numbers destroy credibility - when in doubt, omit the number
+=== QUALITY GUIDELINES (MATCH THIS STYLE) ===
+1. Create NAMED CONCEPTS with vivid names that stick in memory:
+   - Example: "The Pizza tax" (mafia protection money)
+   - Example: "The Scarcity Spiral" (economic death loop)
+   - Example: "The Gerontocracy" (rule by old people)
+   Give your concept a memorable name, then explain what it means.
 
-Write the {beat['name']} beat now. REMEMBER: You MUST write exactly {beat['word_target']} words. Just the prose, no metadata. Start directly with engaging content."""
+2. Use VIVID COMPARISONS to make abstract numbers concrete:
+   - BAD: "GDP fell by 75%"
+   - GOOD: "Imagine your paycheck being slashed to a quarter of what it was"
+   - GOOD: "It's like the difference between Germany and Tunisia existing in the same country"
+
+3. Write for AUDIO - short punchy sentences that hit hard:
+   - BAD: "The economic situation, which had been deteriorating for some time, finally reached a critical point"
+   - GOOD: "Then the floor fell out."
+
+4. NO FILLER PHRASES - these are banned:
+   - "Think about that" / "Let that sink in" / "Write this down"
+   - "Here's the thing" / "The reality is" / "The truth is"
+   - "It's worth noting" / "Interestingly enough"
+   Just state the facts with impact. No meta-commentary.
+
+5. Advance the narrative - each beat should feel like the story is PROGRESSING, not circling
+
+DATA INTEGRITY:
+- ONLY use specific numbers, prices, percentages, and dates that appear VERBATIM in the RESEARCH DATA
+- NEVER invent statistics, prices, dates, or figures
+- If you need a number and it's not in the research, describe the concept without the specific figure
+
+Write the {beat['name']} beat now. {beat['word_target']} words. Pure prose, no metadata. Start with impact."""
 
     model = get_model()
     
