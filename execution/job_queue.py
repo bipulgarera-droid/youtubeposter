@@ -109,10 +109,8 @@ def queue_full_pipeline(youtube_url: str, topic: Optional[str] = None,
     # Queue the job
     queue.enqueue(
         run_full_pipeline,
-        job_id=job_id,
-        youtube_url=youtube_url,
-        topic=topic,
-        telegram_chat_id=telegram_chat_id,
+        args=(job_id, youtube_url),
+        kwargs={'topic': topic, 'telegram_chat_id': telegram_chat_id},
         job_timeout='30m',  # 30 minute timeout
         result_ttl=86400,   # Keep result for 24h
         failure_ttl=86400
@@ -142,10 +140,8 @@ def queue_news_pipeline(news_url: str, topic: str,
     
     queue.enqueue(
         run_news_pipeline,
-        job_id=job_id,
-        news_url=news_url,
-        topic=topic,
-        telegram_chat_id=telegram_chat_id,
+        args=(job_id, news_url, topic),
+        kwargs={'telegram_chat_id': telegram_chat_id},
         job_timeout='30m',
         result_ttl=86400,
         failure_ttl=86400
