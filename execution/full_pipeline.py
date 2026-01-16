@@ -79,8 +79,9 @@ def run_full_pipeline(
         set_job_status(job_id, JobStatus.RUNNING, 10, f"Topic: {topic[:50]}... Transcribing video...")
         
         # Step 2: Transcribe video
-        from execution.transcribe import transcribe_youtube_video
-        transcript = transcribe_youtube_video(youtube_url)
+        from execution.transcribe_video import transcribe_video
+        transcript_result = transcribe_video(youtube_url)
+        transcript = transcript_result.get('transcript', '') if transcript_result else ''
         
         set_job_status(job_id, JobStatus.RUNNING, 20, "Running news research...")
         
