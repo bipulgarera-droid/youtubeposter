@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 Telegram Bot for Video Generation.
-Handles commands for video creation from YouTube URLs and news articles.
+Conversation-based UI with selection menus instead of typed commands.
 """
 import os
 import sys
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,11 +16,13 @@ load_dotenv()
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
+    ConversationHandler,
     ContextTypes,
     filters
 )
@@ -29,7 +31,8 @@ from execution.job_queue import (
     queue_full_pipeline,
     queue_news_pipeline,
     get_job_status,
-    cancel_job
+    cancel_job,
+    get_redis_connection
 )
 
 # Configure logging
@@ -42,141 +45,413 @@ logger = logging.getLogger(__name__)
 # Bot token
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
+# Conversation states
+CHOOSING_MODE, WAITING_URL, CHOOSING_LENGTH, WAITING_SEARCH_KEYWORD, CHOOSING_NEWS_ARTICLE, CHOOSING_JOB_TO_CANCEL = range(6)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Welcome message."""
+# Length options
+LENGTH_OPTIONS = [
+    ("5 minutes", 5),
+    ("10 minutes", 10),
+    ("15 minutes", 15),
+    ("20 minutes", 20),
+    ("30 minutes", 30)
+]
+
+
+def get_main_menu_keyboard():
+    """Main menu keyboard."""
+    keyboard = [
+        [InlineKeyboardButton("📺 Reference Video (YouTube URL)", callback_data="mode_video")],
+        [InlineKeyboardButton("📰 News Article", callback_data="mode_news")],
+        [InlineKeyboardButton("🔍 Search News First", callback_data="mode_search")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_length_keyboard():
+    """Video length selection keyboard."""
+    keyboard = [
+        [InlineKeyboardButton(f"⏱️ {label}", callback_data=f"length_{minutes}")]
+        for label, minutes in LENGTH_OPTIONS
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_cancel_keyboard(jobs: list):
+    """Keyboard for selecting job to cancel."""
+    keyboard = []
+    for job in jobs[:5]:  # Max 5 jobs
+        job_id = job.get('job_id', 'unknown')
+        status = job.get('status', 'unknown')
+        progress = job.get('progress', 0)
+        message = job.get('message', '')[:30]
+        
+        label = f"🎬 {job_id[-12:]} ({status} - {progress}%)"
+        keyboard.append([InlineKeyboardButton(label, callback_data=f"cancel_{job_id}")])
+    
+    keyboard.append([InlineKeyboardButton("❌ Nevermind", callback_data="cancel_abort")])
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Welcome message with main menu."""
+    # Clear any previous conversation data
+    context.user_data.clear()
+    
     await update.message.reply_text(
-        "🎬 Video Generator Bot\n\n"
-        "Commands:\n"
-        "• /video <youtube_url> - Create video from reference\n"
-        "• /news <news_url> <topic> - Create video from news\n"
-        "• /status <job_id> - Check job status\n"
-        "• /digest - Get today's top news\n\n"
-        "Just send a YouTube link and I'll start generating!"
+        "🎬 *Video Generator Bot*\n\n"
+        "What type of video do you want to create today?",
+        parse_mode='Markdown',
+        reply_markup=get_main_menu_keyboard()
     )
+    return CHOOSING_MODE
 
 
-async def video_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /video command - create video from YouTube reference."""
-    if not context.args:
-        await update.message.reply_text(
-            "Usage: /video <youtube_url>\n"
-            "Example: /video https://youtube.com/watch?v=xyz123"
+async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Return to main menu."""
+    query = update.callback_query
+    if query:
+        await query.answer()
+        await query.edit_message_text(
+            "🎬 *Video Generator Bot*\n\n"
+            "What type of video do you want to create today?",
+            parse_mode='Markdown',
+            reply_markup=get_main_menu_keyboard()
         )
-        return
+    else:
+        await update.message.reply_text(
+            "🎬 *Video Generator Bot*\n\n"
+            "What type of video do you want to create today?",
+            parse_mode='Markdown',
+            reply_markup=get_main_menu_keyboard()
+        )
+    return CHOOSING_MODE
+
+
+async def mode_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle mode selection."""
+    query = update.callback_query
+    await query.answer()
     
-    youtube_url = context.args[0]
-    topic = ' '.join(context.args[1:]) if len(context.args) > 1 else None
+    mode = query.data.replace("mode_", "")
+    context.user_data['mode'] = mode
     
-    # Validate URL
-    if 'youtube.com' not in youtube_url and 'youtu.be' not in youtube_url:
-        await update.message.reply_text("❌ Invalid YouTube URL")
-        return
+    if mode == "video":
+        await query.edit_message_text(
+            "📺 *Reference Video Mode*\n\n"
+            "Send me the YouTube URL of the video you want to use as reference:",
+            parse_mode='Markdown'
+        )
+        return WAITING_URL
     
-    await update.message.reply_text("🔄 Queuing video generation...")
+    elif mode == "news":
+        await query.edit_message_text(
+            "📰 *News Article Mode*\n\n"
+            "Send me the news article URL:",
+            parse_mode='Markdown'
+        )
+        return WAITING_URL
+    
+    elif mode == "search":
+        await query.edit_message_text(
+            "🔍 *Search News Mode*\n\n"
+            "What topic do you want to search for?\n"
+            "Enter a keyword or phrase:",
+            parse_mode='Markdown'
+        )
+        return WAITING_SEARCH_KEYWORD
+
+
+async def receive_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle URL input."""
+    url = update.message.text.strip()
+    mode = context.user_data.get('mode', 'video')
+    
+    # Validate URL based on mode
+    if mode == "video":
+        if 'youtube.com' not in url and 'youtu.be' not in url:
+            await update.message.reply_text(
+                "❌ That doesn't look like a YouTube URL.\n\n"
+                "Please send a valid YouTube URL (e.g., https://youtube.com/watch?v=xyz)"
+            )
+            return WAITING_URL
+        context.user_data['youtube_url'] = url
+    else:
+        context.user_data['news_url'] = url
+    
+    # Ask for video length
+    await update.message.reply_text(
+        "⏱️ *Video Length*\n\n"
+        "How long should the video be?",
+        parse_mode='Markdown',
+        reply_markup=get_length_keyboard()
+    )
+    return CHOOSING_LENGTH
+
+
+async def length_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle length selection and queue the job."""
+    query = update.callback_query
+    await query.answer()
+    
+    # Extract length
+    length = int(query.data.replace("length_", ""))
+    context.user_data['target_minutes'] = length
+    
+    mode = context.user_data.get('mode', 'video')
+    chat_id = update.effective_chat.id
+    
+    await query.edit_message_text("🔄 *Queuing your video...*", parse_mode='Markdown')
     
     try:
-        job_id = queue_full_pipeline(
-            youtube_url=youtube_url,
-            topic=topic,
-            telegram_chat_id=update.effective_chat.id
-        )
+        if mode == "video":
+            youtube_url = context.user_data.get('youtube_url')
+            job_id = queue_full_pipeline(
+                youtube_url=youtube_url,
+                topic=None,  # Will extract from video title
+                telegram_chat_id=chat_id
+            )
+            source_info = f"📺 YouTube: {youtube_url[:40]}..."
+            
+        elif mode == "news":
+            news_url = context.user_data.get('news_url')
+            # For news mode, topic is extracted from headline
+            job_id = queue_news_pipeline(
+                news_url=news_url,
+                topic=None,  # Will extract from article headline
+                telegram_chat_id=chat_id
+            )
+            source_info = f"📰 News: {news_url[:40]}..."
+            
+        elif mode == "search":
+            news_article = context.user_data.get('selected_article', {})
+            news_url = news_article.get('url', '')
+            topic = news_article.get('title', '')
+            
+            job_id = queue_news_pipeline(
+                news_url=news_url,
+                topic=topic,
+                telegram_chat_id=chat_id
+            )
+            source_info = f"🔍 {topic[:40]}..."
         
-        await update.message.reply_text(
-            f"✅ Job queued!\n\n"
-            f"📹 Job ID: {job_id}\n"
-            f"🔗 URL: {youtube_url[:50]}...\n\n"
+        await query.edit_message_text(
+            f"✅ *Job Queued!*\n\n"
+            f"📹 Job ID: `{job_id}`\n"
+            f"{source_info}\n"
+            f"⏱️ Length: {length} minutes\n\n"
             f"I'll notify you when it's complete.\n"
-            f"Use /status {job_id} to check progress."
-        )
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error: {str(e)}")
-
-
-async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /news command - create video from news article."""
-    if len(context.args) < 2:
-        await update.message.reply_text(
-            "Usage: /news <news_url> <topic>\n"
-            "Example: /news https://reuters.com/article/xyz Silver Market Crash"
-        )
-        return
-    
-    news_url = context.args[0]
-    topic = ' '.join(context.args[1:])
-    
-    await update.message.reply_text("🔄 Queuing news video generation...")
-    
-    try:
-        job_id = queue_news_pipeline(
-            news_url=news_url,
-            topic=topic,
-            telegram_chat_id=update.effective_chat.id
+            f"Use /status to check progress.",
+            parse_mode='Markdown'
         )
         
-        await update.message.reply_text(
-            f"✅ News job queued!\n\n"
-            f"📹 Job ID: {job_id}\n"
-            f"📰 Topic: {topic}\n\n"
-            f"I'll notify you when it's complete."
-        )
+        # Clear conversation data
+        context.user_data.clear()
+        return ConversationHandler.END
+        
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {str(e)}")
+        logger.error(f"Error queuing job: {e}")
+        await query.edit_message_text(
+            f"❌ *Error queuing job:*\n{str(e)}\n\n"
+            f"Use /start to try again.",
+            parse_mode='Markdown'
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
+
+async def receive_search_keyword(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle search keyword and show results."""
+    keyword = update.message.text.strip()
+    
+    await update.message.reply_text("🔍 Searching for news articles...")
+    
+    try:
+        from execution.search_news import search_news
+        
+        result = search_news(keyword, num_articles=10, days_limit=3)
+        articles = result.get('articles', []) if result else []
+        
+        if not articles:
+            await update.message.reply_text(
+                "❌ No news articles found for that topic.\n\n"
+                "Try a different keyword, or use /start to go back."
+            )
+            return WAITING_SEARCH_KEYWORD
+        
+        # Store articles in context
+        context.user_data['search_results'] = articles
+        
+        # Build keyboard with articles
+        keyboard = []
+        for i, article in enumerate(articles[:8]):  # Max 8 results
+            title = article.get('title', 'No title')[:50]
+            source = article.get('source', '')[:15]
+            label = f"{i+1}. {title}... ({source})"
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"article_{i}")])
+        
+        keyboard.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main")])
+        
+        await update.message.reply_text(
+            f"📰 *Found {len(articles)} articles for \"{keyword}\"*\n\n"
+            "Select one to create a video:",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return CHOOSING_NEWS_ARTICLE
+        
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        await update.message.reply_text(f"❌ Search failed: {str(e)}")
+        return WAITING_SEARCH_KEYWORD
+
+
+async def article_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle article selection."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "back_main":
+        return await main_menu(update, context)
+    
+    # Extract article index
+    article_idx = int(query.data.replace("article_", ""))
+    articles = context.user_data.get('search_results', [])
+    
+    if article_idx >= len(articles):
+        await query.edit_message_text("❌ Invalid selection. Use /start to try again.")
+        return ConversationHandler.END
+    
+    selected = articles[article_idx]
+    context.user_data['selected_article'] = selected
+    
+    # Show article info and ask for length
+    await query.edit_message_text(
+        f"📰 *Selected Article:*\n\n"
+        f"*{selected.get('title', 'No title')}*\n"
+        f"Source: {selected.get('source', 'Unknown')}\n\n"
+        "⏱️ How long should the video be?",
+        parse_mode='Markdown',
+        reply_markup=get_length_keyboard()
+    )
+    return CHOOSING_LENGTH
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /status command - check job progress."""
-    if not context.args:
-        await update.message.reply_text("Usage: /status <job_id>")
-        return
+    """Show status of all recent jobs."""
+    chat_id = update.effective_chat.id
     
-    job_id = context.args[0]
-    status = get_job_status(job_id)
-    
-    if not status:
-        await update.message.reply_text(f"❌ Job not found: {job_id}")
-        return
-    
-    status_emoji = {
-        'pending': '⏳',
-        'running': '🔄',
-        'completed': '✅',
-        'failed': '❌'
-    }
-    
-    emoji = status_emoji.get(status['status'], '❓')
-    
-    message = (
-        f"{emoji} Job Status\n\n"
-        f"📹 ID: {job_id}\n"
-        f"📊 Status: {status['status'].upper()}\n"
-        f"📈 Progress: {status['progress']}%\n"
-        f"💬 {status['message']}"
-    )
-    
-    await update.message.reply_text(message)
-
-
-async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /cancel command - cancel a running job."""
-    if not context.args:
-        await update.message.reply_text("Usage: /cancel <job_id>")
-        return
-    
-    job_id = context.args[0]
-    
+    # Get recent jobs from Redis
     try:
-        success = cancel_job(job_id)
-        if success:
-            await update.message.reply_text(f"✅ Job {job_id} cancelled successfully!")
-        else:
-            await update.message.reply_text(f"❌ Could not cancel job {job_id}. It may have already completed or doesn't exist.")
+        redis = get_redis_connection()
+        keys = redis.keys("job_status:*")
+        
+        if not keys:
+            await update.message.reply_text("No jobs found. Use /start to create a video.")
+            return
+        
+        jobs = []
+        for key in keys[:10]:  # Last 10 jobs
+            data = redis.get(key)
+            if data:
+                import json
+                job = json.loads(data)
+                jobs.append(job)
+        
+        # Sort by updated_at (most recent first)
+        jobs.sort(key=lambda x: x.get('updated_at', ''), reverse=True)
+        
+        if not jobs:
+            await update.message.reply_text("No jobs found. Use /start to create a video.")
+            return
+        
+        message = "📊 *Recent Jobs:*\n\n"
+        for job in jobs[:5]:
+            job_id = job.get('job_id', 'unknown')
+            status = job.get('status', 'unknown')
+            progress = job.get('progress', 0)
+            msg = job.get('message', '')[:40]
+            
+            emoji = {
+                'pending': '⏳',
+                'running': '🔄',
+                'completed': '✅',
+                'failed': '❌'
+            }.get(status, '❓')
+            
+            message += f"{emoji} `{job_id[-16:]}`\n"
+            message += f"   Status: {status.upper()} ({progress}%)\n"
+            message += f"   {msg}\n\n"
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+        
     except Exception as e:
-        await update.message.reply_text(f"❌ Error cancelling job: {str(e)}")
+        logger.error(f"Status error: {e}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show jobs to cancel."""
+    try:
+        redis = get_redis_connection()
+        keys = redis.keys("job_status:*")
+        
+        if not keys:
+            await update.message.reply_text("No jobs to cancel.")
+            return ConversationHandler.END
+        
+        jobs = []
+        for key in keys:
+            data = redis.get(key)
+            if data:
+                import json
+                job = json.loads(data)
+                if job.get('status') in ['pending', 'running']:
+                    jobs.append(job)
+        
+        if not jobs:
+            await update.message.reply_text("No active jobs to cancel.")
+            return ConversationHandler.END
+        
+        context.user_data['cancelable_jobs'] = jobs
+        
+        await update.message.reply_text(
+            "🛑 *Cancel Job*\n\n"
+            "Select a job to cancel:",
+            parse_mode='Markdown',
+            reply_markup=get_cancel_keyboard(jobs)
+        )
+        return CHOOSING_JOB_TO_CANCEL
+        
+    except Exception as e:
+        logger.error(f"Cancel error: {e}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+        return ConversationHandler.END
+
+
+async def confirm_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle cancel confirmation."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "cancel_abort":
+        await query.edit_message_text("👍 Cancelled - no jobs affected.")
+        return ConversationHandler.END
+    
+    job_id = query.data.replace("cancel_", "")
+    
+    success = cancel_job(job_id)
+    
+    if success:
+        await query.edit_message_text(f"✅ Job `{job_id}` cancelled.", parse_mode='Markdown')
+    else:
+        await query.edit_message_text(f"❌ Could not cancel job `{job_id}`.", parse_mode='Markdown')
+    
+    return ConversationHandler.END
 
 
 async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /digest command - get daily news digest."""
+    """Show today's top stories."""
     await update.message.reply_text("🔄 Fetching today's top stories...")
     
     try:
@@ -187,7 +462,7 @@ async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         all_news = []
         for topic in topics:
-            result = search_news(topic, num_articles=3)
+            result = search_news(topic, num_articles=3, days_limit=3)
             if result and 'articles' in result:
                 all_news.extend(result['articles'])
         
@@ -195,45 +470,26 @@ async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("No news found today.")
             return
         
-        message = "📰 Today's Top Stories:\n\n"
+        message = "📰 *Today's Top Stories:*\n\n"
         for i, article in enumerate(all_news[:10], 1):
-            title = article.get('title', 'No title')[:60]
-            message += f"{i}. {title}\n"
+            title = article.get('title', 'No title')[:55]
+            source = article.get('source', '')[:15]
+            message += f"{i}. {title}...\n   _({source})_\n\n"
         
-        message += "\nReply with:\n/news <url> <topic>\nto create a video from any story."
+        message += "\nUse /start → 🔍 Search News to create a video from any topic."
         
-        await update.message.reply_text(message)
+        await update.message.reply_text(message, parse_mode='Markdown')
+        
     except Exception as e:
-        await update.message.reply_text(f"❌ Error fetching news: {str(e)}")
+        logger.error(f"Digest error: {e}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
 
 
-async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle plain YouTube URLs sent without command."""
-    text = update.message.text
-    
-    # Check if it's a YouTube URL
-    if 'youtube.com' in text or 'youtu.be' in text:
-        # Extract URL from message
-        import re
-        url_match = re.search(r'(https?://[^\s]+)', text)
-        if url_match:
-            youtube_url = url_match.group(1)
-            
-            await update.message.reply_text("🔄 Detected YouTube URL. Queuing video generation...")
-            
-            try:
-                job_id = queue_full_pipeline(
-                    youtube_url=youtube_url,
-                    telegram_chat_id=update.effective_chat.id
-                )
-                
-                await update.message.reply_text(
-                    f"✅ Job queued!\n\n"
-                    f"📹 Job ID: {job_id}\n"
-                    f"I'll notify you when complete."
-                )
-            except Exception as e:
-                await update.message.reply_text(f"❌ Error: {str(e)}")
+async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel current conversation."""
+    context.user_data.clear()
+    await update.message.reply_text("Cancelled. Use /start to begin again.")
+    return ConversationHandler.END
 
 
 def main():
@@ -245,19 +501,45 @@ def main():
     # Create application
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Add handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("video", video_command))
-    application.add_handler(CommandHandler("news", news_command))
+    # Main conversation handler
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("start", start),
+            CommandHandler("cancel", cancel_command),
+        ],
+        states={
+            CHOOSING_MODE: [
+                CallbackQueryHandler(mode_selected, pattern="^mode_"),
+            ],
+            WAITING_URL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_url),
+            ],
+            CHOOSING_LENGTH: [
+                CallbackQueryHandler(length_selected, pattern="^length_"),
+            ],
+            WAITING_SEARCH_KEYWORD: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_keyword),
+            ],
+            CHOOSING_NEWS_ARTICLE: [
+                CallbackQueryHandler(article_selected, pattern="^article_"),
+                CallbackQueryHandler(main_menu, pattern="^back_main$"),
+            ],
+            CHOOSING_JOB_TO_CANCEL: [
+                CallbackQueryHandler(confirm_cancel, pattern="^cancel_"),
+            ],
+        },
+        fallbacks=[
+            CommandHandler("start", start),
+            MessageHandler(filters.COMMAND, cancel_conversation),
+        ],
+        allow_reentry=True
+    )
+    
+    application.add_handler(conv_handler)
+    
+    # Standalone commands (work outside conversation)
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("digest", digest_command))
-    application.add_handler(CommandHandler("cancel", cancel_command))
-    
-    # Handle plain URLs
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND,
-        handle_url
-    ))
     
     print("🤖 Bot started! Listening for messages...")
     

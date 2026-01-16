@@ -259,7 +259,7 @@ def filter_invalid_sources(articles: list) -> list:
     
     return valid
 
-def search_news(topic: str, num_articles: int = 30, transcript: Optional[str] = None, channel_focus: str = "", days_limit: int = 7) -> dict:
+def search_news(topic: str, num_articles: int = 30, transcript: Optional[str] = None, channel_focus: str = "", days_limit: int = 3) -> dict:
     """
     Main function to search for news articles.
     Uses AI to analyze transcript and generate targeted queries.

@@ -3,8 +3,10 @@
 AI Thumbnail Generation.
 Creates thumbnails based on topic using AI image generation.
 Supports style reference for consistent branding.
+Includes compression for YouTube (<2MB) and title-based naming.
 """
 import os
+import re
 import json
 import base64
 import requests
@@ -12,6 +14,7 @@ from pathlib import Path
 from typing import Optional, Dict
 from dotenv import load_dotenv
 import google.generativeai as genai
+from PIL import Image
 
 load_dotenv()
 
@@ -23,6 +26,56 @@ if GEMINI_API_KEY:
 BASE_DIR = Path(__file__).parent.parent
 TMP_DIR = BASE_DIR / '.tmp'
 ASSETS_DIR = BASE_DIR / 'assets'
+
+
+def sanitize_filename(title: str, max_length: int = 100) -> str:
+    """Convert title to safe filename."""
+    # Remove special characters, keep alphanumeric, spaces, hyphens
+    safe = re.sub(r'[^\w\s-]', '', title)
+    # Replace spaces with underscores
+    safe = safe.strip().replace(' ', '_')
+    # Truncate
+    return safe[:max_length]
+
+
+def compress_thumbnail(image_path: str, max_size_mb: float = 2.0) -> str:
+    """
+    Compress image to under max_size_mb for YouTube upload.
+    Converts to JPEG if needed for better compression.
+    """
+    max_size_bytes = max_size_mb * 1024 * 1024
+    
+    # Check current size
+    current_size = os.path.getsize(image_path)
+    if current_size <= max_size_bytes:
+        print(f"✅ Thumbnail already under {max_size_mb}MB ({current_size / 1024 / 1024:.2f}MB)")
+        return image_path
+    
+    print(f"⚠️ Thumbnail is {current_size / 1024 / 1024:.2f}MB, compressing...")
+    
+    # Open image
+    img = Image.open(image_path)
+    
+    # Convert to RGB if necessary (for JPEG)
+    if img.mode in ('RGBA', 'P'):
+        img = img.convert('RGB')
+    
+    # Change extension to jpg for output
+    output_path = str(Path(image_path).with_suffix('.jpg'))
+    
+    quality = 95
+    while quality >= 50:
+        img.save(output_path, 'JPEG', quality=quality, optimize=True)
+        new_size = os.path.getsize(output_path)
+        
+        if new_size <= max_size_bytes:
+            print(f"✅ Compressed to {new_size / 1024 / 1024:.2f}MB (quality={quality})")
+            return output_path
+        
+        quality -= 5
+    
+    print(f"⚠️ Could only compress to {new_size / 1024 / 1024:.2f}MB")
+    return output_path
 
 
 def generate_thumbnail_prompt(topic: str, style_notes: str = "") -> str:
@@ -76,8 +129,8 @@ def generate_thumbnail_with_gemini(
     prompt = generate_thumbnail_prompt(topic, style_notes)
     
     try:
-        # Use Gemini with Imagen for image generation
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        # Use Nano Banana Pro for thumbnail generation
+        model = genai.GenerativeModel('gemini-3-pro-image-preview')
         
         # If we have a style reference, include it
         contents = [prompt]
@@ -185,32 +238,52 @@ def generate_thumbnail_with_flux(
 
 def generate_thumbnail(
     topic: str,
+    title: str = None,
     output_path: str = None,
     style_reference: str = None,
-    use_flux: bool = False
+    use_flux: bool = False,
+    auto_compress: bool = True
 ) -> Optional[str]:
     """
     Main function to generate a thumbnail.
     
     Args:
-        topic: Video topic
-        output_path: Where to save
+        topic: Video topic for prompt generation
+        title: Video title (used for filename if output_path not specified)
+        output_path: Where to save (overrides title-based naming)
         style_reference: Optional style reference image
         use_flux: Whether to use Flux (Replicate) instead of Gemini
+        auto_compress: Whether to auto-compress to <2MB for YouTube
         
     Returns:
         Path to thumbnail or None
     """
+    # Generate output path from title if not specified
+    if not output_path and title:
+        output_dir = TMP_DIR / 'thumbnails'
+        output_dir.mkdir(parents=True, exist_ok=True)
+        safe_filename = sanitize_filename(title)
+        output_path = str(output_dir / f"{safe_filename}_thumbnail.png")
+    
+    # Generate thumbnail
     if use_flux:
-        return generate_thumbnail_with_flux(topic, output_path)
+        result = generate_thumbnail_with_flux(topic, output_path)
     else:
-        return generate_thumbnail_with_gemini(topic, output_path, style_reference)
+        result = generate_thumbnail_with_gemini(topic, output_path, style_reference)
+    
+    # Auto-compress for YouTube if requested
+    if result and auto_compress:
+        result = compress_thumbnail(result, max_size_mb=2.0)
+    
+    return result
 
 
 if __name__ == "__main__":
     # Test
     result = generate_thumbnail(
         topic="Silver Market Crash: Banks Caught Manipulating Prices",
+        title="THE SILVER CRASH: Banks Caught Red-Handed",
         output_path="test_thumbnail.png"
     )
     print(f"Generated: {result}")
+

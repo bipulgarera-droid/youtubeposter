@@ -264,7 +264,7 @@ Write the {beat['name']} beat now. Just the prose, no metadata. Start directly w
     }
 
 
-def split_into_chunks(text: str, max_words: int = 12) -> List[Dict]:
+def split_into_chunks(text: str, max_words: int = 20) -> List[Dict]:
     """
     Split text into chunks for AI image generation.
     Each chunk is roughly max_words words.

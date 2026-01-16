@@ -45,28 +45,52 @@ else:
 def crop_to_youtube(image: Image.Image) -> Image.Image:
     """
     Crop/resize image to exact 16:9 YouTube dimensions (1920x1080).
-    Centers the crop to keep the most important part.
+    Uses COVER-FIT logic: scales up to fill entire frame, then crops excess.
+    This prevents any black/white bars.
     """
     original_width, original_height = image.size
+    
+    # Convert to RGB if needed (removes alpha channel that can cause issues)
+    if image.mode in ('RGBA', 'P', 'LA'):
+        # Create white background for transparency
+        background = Image.new('RGB', image.size, (0, 0, 0))  # Black background
+        if image.mode == 'RGBA':
+            background.paste(image, mask=image.split()[3])  # Use alpha channel as mask
+        else:
+            background.paste(image)
+        image = background
+    elif image.mode != 'RGB':
+        image = image.convert('RGB')
+    
     original_aspect = original_width / original_height
     
-    if abs(original_aspect - YOUTUBE_ASPECT) < 0.01:
-        # Already close to 16:9, just resize
-        return image.resize((YOUTUBE_WIDTH, YOUTUBE_HEIGHT), Image.Resampling.LANCZOS)
-    
+    # COVER-FIT: Scale to fill, then crop to exact size
     if original_aspect > YOUTUBE_ASPECT:
-        # Image is wider than 16:9, crop sides
-        new_width = int(original_height * YOUTUBE_ASPECT)
-        left = (original_width - new_width) // 2
-        cropped = image.crop((left, 0, left + new_width, original_height))
+        # Image is wider: scale by height to fill, then crop width
+        scale_factor = YOUTUBE_HEIGHT / original_height
+        new_width = int(original_width * scale_factor)
+        new_height = YOUTUBE_HEIGHT
+        resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        # Crop excess width from center
+        left = (new_width - YOUTUBE_WIDTH) // 2
+        cropped = resized.crop((left, 0, left + YOUTUBE_WIDTH, YOUTUBE_HEIGHT))
     else:
-        # Image is taller than 16:9, crop top/bottom
-        new_height = int(original_width / YOUTUBE_ASPECT)
-        top = (original_height - new_height) // 2
-        cropped = image.crop((0, top, original_width, top + new_height))
+        # Image is taller: scale by width to fill, then crop height
+        scale_factor = YOUTUBE_WIDTH / original_width
+        new_width = YOUTUBE_WIDTH
+        new_height = int(original_height * scale_factor)
+        resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        # Crop excess height from center
+        top = (new_height - YOUTUBE_HEIGHT) // 2
+        cropped = resized.crop((0, top, YOUTUBE_WIDTH, top + YOUTUBE_HEIGHT))
     
-    # Resize to exact dimensions
-    return cropped.resize((YOUTUBE_WIDTH, YOUTUBE_HEIGHT), Image.Resampling.LANCZOS)
+    # Validate final dimensions
+    if cropped.size != (YOUTUBE_WIDTH, YOUTUBE_HEIGHT):
+        print(f"   ⚠️ Size mismatch, forcing resize: {cropped.size} -> {YOUTUBE_WIDTH}x{YOUTUBE_HEIGHT}")
+        cropped = cropped.resize((YOUTUBE_WIDTH, YOUTUBE_HEIGHT), Image.Resampling.LANCZOS)
+    
+    return cropped
+
 
 
 def get_visual_metaphor(chunk_text: str) -> str:
