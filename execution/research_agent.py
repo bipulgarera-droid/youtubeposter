@@ -14,6 +14,14 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import google.generativeai as genai
 
+# Import article content fetcher (uses Camoufox or requests fallback)
+try:
+    from execution.fetch_articles import fetch_multiple_articles
+    FETCH_AVAILABLE = True
+except ImportError:
+    FETCH_AVAILABLE = False
+    print("Warning: fetch_articles not available, will use snippets only")
+
 # Load API keys
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
@@ -65,7 +73,37 @@ def deep_research(topic: str, country: Optional[str] = None, source_article: Opt
     # 4. Expert analysis and opinion pieces
     research["expert_analysis"] = _search_expert_analysis(topic, country)
     
-    # 5. Generate RAW FACTS compilation (no narrative, just facts)
+    # 5. SCRAPE ARTICLE CONTENT (new step - fetch full article text)
+    if FETCH_AVAILABLE:
+        print("📖 Scraping full article content...")
+        # Combine all articles that have URLs
+        all_articles_with_urls = []
+        for article in research["recent_news"]:
+            if article.get("url"):
+                all_articles_with_urls.append(article)
+        for article in research["historical_context"]:
+            if article.get("url"):
+                all_articles_with_urls.append(article)
+        for article in research["expert_analysis"]:
+            if article.get("url"):
+                all_articles_with_urls.append(article)
+        
+        # Scrape top 12 articles (limit for performance)
+        if all_articles_with_urls:
+            enriched = fetch_multiple_articles(all_articles_with_urls, max_articles=12)
+            # Update original articles with content
+            url_to_content = {a.get('url'): a.get('content', '') for a in enriched}
+            for article in research["recent_news"]:
+                if article.get("url") in url_to_content:
+                    article["content"] = url_to_content[article["url"]]
+            for article in research["historical_context"]:
+                if article.get("url") in url_to_content:
+                    article["content"] = url_to_content[article["url"]]
+            for article in research["expert_analysis"]:
+                if article.get("url") in url_to_content:
+                    article["content"] = url_to_content[article["url"]]
+    
+    # 6. Generate RAW FACTS compilation (no narrative, just facts)
     research["raw_facts"] = _compile_raw_facts(research)
     
     return research
@@ -276,31 +314,58 @@ Format as:
 
 
 def format_research_for_script(research: Dict) -> str:
-    """Format research into a prompt-ready string for script generation."""
+    """Format research into a prompt-ready string for script generation.
+    
+    Now includes FULL ARTICLE CONTENT (scraped via Camoufox) for better source material.
+    """
     output = f"""# Research: {research['topic']}
 Country: {research.get('country', 'N/A')}
 Date: {research['timestamp']}
 
-## Raw Facts
+## Raw Facts (AI-compiled summary)
 {research.get('raw_facts', research.get('summary', 'No summary available'))}
 
-## Recent News Headlines ({len(research['recent_news'])} articles)
+## Recent News Articles ({len(research['recent_news'])} sources)
 """
-    for news in research["recent_news"][:8]:
+    for i, news in enumerate(research["recent_news"][:8]):
         date = news.get('date', '')
-        output += f"- [{date}] {news['title']}\n"
+        title = news.get('title', 'No title')
+        content = news.get('content', news.get('snippet', ''))
+        
+        # Include full content if available, otherwise snippet
+        if content and len(content) > 100:
+            # Limit each article to ~2000 chars to avoid token explosion
+            content_preview = content[:2000] + '...' if len(content) > 2000 else content
+            output += f"\n### [{i+1}] {title}\nDate: {date}\n{content_preview}\n"
+        else:
+            output += f"- [{date}] {title}\n"
     
     output += f"\n## Historical Context ({len(research['historical_context'])} sources)\n"
-    for ctx in research["historical_context"][:5]:
-        output += f"- {ctx['title']}\n"
+    for i, ctx in enumerate(research["historical_context"][:5]):
+        title = ctx.get('title', 'No title')
+        content = ctx.get('content', ctx.get('snippet', ''))
+        
+        if content and len(content) > 100:
+            content_preview = content[:1500] + '...' if len(content) > 1500 else content
+            output += f"\n### Historical: {title}\n{content_preview}\n"
+        else:
+            output += f"- {title}\n"
     
     output += f"\n## Statistics ({len(research['statistics'])} sources)\n"
     for stat in research["statistics"][:4]:
-        output += f"- {stat['snippet'][:150]}...\n"
+        snippet = stat.get('snippet', '')[:300]
+        output += f"- {snippet}\n"
     
     output += f"\n## Expert Analysis ({len(research.get('expert_analysis', []))} sources)\n"
     for exp in research.get("expert_analysis", [])[:3]:
-        output += f"- {exp['title']}\n"
+        title = exp.get('title', 'No title')
+        content = exp.get('content', exp.get('snippet', ''))
+        
+        if content and len(content) > 100:
+            content_preview = content[:1500] + '...' if len(content) > 1500 else content
+            output += f"\n### Expert: {title}\n{content_preview}\n"
+        else:
+            output += f"- {title}\n"
     
     return output
 
