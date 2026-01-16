@@ -122,14 +122,58 @@ def run_full_pipeline(
         set_job_status(job_id, JobStatus.RUNNING, 80, "Stitching final video...")
         
         # Step 7: Stitch video
-        from execution.generate_video import generate_video
-        video_path = generate_video()
+        from execution.generate_video import build_video_from_chunks
         
-        set_job_status(job_id, JobStatus.RUNNING, 90, "Generating subtitles...")
+        # Prepare chunks with paths
+        chunks_with_paths = []
+        for i, chunk in enumerate(script_chunks):
+            chunk_data = {
+                'id': i,
+                'text': chunk.get('text', ''),
+                'audio_path': str(TMP_DIR / 'audio' / f'chunk_{i:04d}.mp3'),
+                'screenshot_path': str(TMP_DIR / 'screenshots' / f'screenshot_{i+1:04d}.png')
+            }
+            chunks_with_paths.append(chunk_data)
         
-        # Step 8: Generate SRT
-        from execution.generate_srt import generate_srt
-        srt_path = generate_srt()
+        video_result = build_video_from_chunks(chunks_with_paths)
+        temp_video_path = video_result.get('output_path')
+        
+        if not temp_video_path:
+            raise Exception("Video stitching failed")
+        
+        set_job_status(job_id, JobStatus.RUNNING, 88, "Burning subtitles...")
+        
+        # Step 8: Generate subtitles and burn into video
+        from execution.generate_subtitles import generate_subtitled_video
+        subtitle_result = generate_subtitled_video(
+            video_path=temp_video_path,
+            audio_path=None,  # Will extract audio from video
+            output_dir=str(TMP_DIR / 'final_videos')
+        )
+        
+        if subtitle_result.get('success'):
+            video_path = subtitle_result.get('subtitled_video', temp_video_path)
+            srt_path = subtitle_result.get('srt_path')
+        else:
+            print(f"⚠️ Subtitle generation failed: {subtitle_result.get('error')}")
+            video_path = temp_video_path
+            srt_path = None
+        
+        set_job_status(job_id, JobStatus.RUNNING, 92, "Renaming video file...")
+        
+        # Step 8.5: Rename video file to title (for YouTube algorithm)
+        import re
+        safe_title = re.sub(r'[^\w\s-]', '', topic or video_info['title'])[:100]
+        safe_title = safe_title.strip().replace(' ', '_')
+        
+        final_video_dir = TMP_DIR / 'final_videos'
+        final_video_dir.mkdir(parents=True, exist_ok=True)
+        final_video_path = final_video_dir / f"{safe_title}.mp4"
+        
+        if os.path.exists(video_path) and str(video_path) != str(final_video_path):
+            import shutil
+            shutil.move(video_path, final_video_path)
+            video_path = str(final_video_path)
         
         set_job_status(job_id, JobStatus.RUNNING, 95, "Generating metadata...")
         
@@ -142,6 +186,7 @@ def run_full_pipeline(
             'srt_path': str(srt_path) if srt_path else None,
             'metadata': metadata,
             'topic': topic,
+            'title': topic or video_info['title'],
             'original_title': video_info['title'],
             'chunk_count': len(script_chunks),
             'word_count': len(script_text.split()),
