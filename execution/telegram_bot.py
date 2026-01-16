@@ -154,14 +154,25 @@ async def newvideo_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     chat_id = update.effective_chat.id
     
     async def send_message(text):
-        await context.bot.send_message(chat_id, text, parse_mode='Markdown')
+        try:
+            await context.bot.send_message(chat_id, text, parse_mode='Markdown')
+        except Exception:
+            # Fallback to plain text if markdown fails
+            await context.bot.send_message(chat_id, text)
     
     async def send_keyboard(text, options):
         keyboard = [[InlineKeyboardButton(label, callback_data=cb)] for label, cb in options]
-        await context.bot.send_message(
-            chat_id, text, parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        try:
+            await context.bot.send_message(
+                chat_id, text, parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception:
+            # Fallback to plain text
+            await context.bot.send_message(
+                chat_id, text,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
     
     pipeline = create_pipeline(chat_id, send_message, send_keyboard)
     context.user_data['pipeline'] = pipeline
@@ -207,14 +218,23 @@ async def mode_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         chat_id = update.effective_chat.id
         
         async def send_message(text):
-            await context.bot.send_message(chat_id, text, parse_mode='Markdown')
+            try:
+                await context.bot.send_message(chat_id, text, parse_mode='Markdown')
+            except Exception:
+                await context.bot.send_message(chat_id, text)
         
         async def send_keyboard(text, options):
             keyboard = [[InlineKeyboardButton(label, callback_data=cb)] for label, cb in options]
-            await context.bot.send_message(
-                chat_id, text, parse_mode='Markdown',
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+            try:
+                await context.bot.send_message(
+                    chat_id, text, parse_mode='Markdown',
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            except Exception:
+                await context.bot.send_message(
+                    chat_id, text,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
         
         pipeline = create_pipeline(chat_id, send_message, send_keyboard)
         context.user_data['pipeline'] = pipeline
