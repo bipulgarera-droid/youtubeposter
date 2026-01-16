@@ -55,11 +55,19 @@ def generate_description(
     script_text: str,
     topic: str,
     original_description: str = "",
+    timestamps_text: str = "",
     include_timestamps: bool = True
 ) -> str:
     """
-    Generate an optimized YouTube description.
+    Generate an optimized YouTube description with timestamps.
     Uses the hook from the script and adds SEO elements.
+    
+    Args:
+        script_text: Full script text
+        topic: Video topic
+        original_description: Reference description for style
+        timestamps_text: Pre-formatted timestamps (from generate_timestamps.py)
+        include_timestamps: Whether to include timestamps section
     """
     # Extract first 2-3 sentences as hook
     sentences = re.split(r'(?<=[.!?])\s+', script_text)
@@ -73,7 +81,7 @@ REFERENCE DESCRIPTION (for style): {original_description[:500] if original_descr
 
 STRUCTURE:
 1. First 2 sentences: Compelling hook from the script (this shows in search results)
-2. Line break, then 3-5 bullet points of key topics covered
+2. Line break, then "In this video, we cover:" with 3-5 bullet points
 3. Line break, then call to action (subscribe, comment)
 4. Line break, then disclaimer if financial content
 
@@ -81,6 +89,7 @@ RULES:
 - Keep it under 500 characters for the main content
 - Use plain text only - NO asterisks, NO markdown, NO bold
 - Use emoji sparingly (1-2 max)
+- Do NOT include timestamps - they will be added separately
 - Include 2-3 relevant hashtags at the end
 
 DESCRIPTION:"""
@@ -92,11 +101,20 @@ DESCRIPTION:"""
         # Remove any markdown
         description = description.replace('*', '')
         description = description.replace('_', '')
+        
+        # Add timestamps if provided
+        if include_timestamps and timestamps_text:
+            description = description + "\n\n" + timestamps_text
+        
         return description
     except Exception as e:
         print(f"Description generation failed: {e}")
         # Fallback to simple description
-        return f"{hook}\n\n{topic}\n\nSubscribe for more updates!"
+        fallback = f"{hook}\n\n{topic}\n\nSubscribe for more updates!"
+        if timestamps_text:
+            fallback += "\n\n" + timestamps_text
+        return fallback
+
 
 
 def extract_and_generate_tags(
@@ -147,10 +165,22 @@ def generate_full_metadata(
     original_description: str,
     original_tags: List[str],
     topic: str,
-    script_text: str
+    script_text: str,
+    timestamps_text: str = ""
 ) -> Dict:
     """
     Generate complete metadata package for YouTube upload.
+    
+    Args:
+        original_title: Reference video title
+        original_description: Reference video description
+        original_tags: Reference video tags
+        topic: Video topic
+        script_text: Generated script text
+        timestamps_text: Pre-formatted timestamps (from generate_timestamps.py)
+    
+    Returns:
+        Dict with title, description (including timestamps), tags
     """
     # Extract hook from script
     sentences = re.split(r'(?<=[.!?])\s+', script_text)
@@ -159,8 +189,14 @@ def generate_full_metadata(
     print("📝 Generating modified title...")
     title = generate_modified_title(original_title, topic, hook)
     
-    print("📝 Generating description...")
-    description = generate_description(script_text, topic, original_description)
+    print("📝 Generating description with timestamps...")
+    description = generate_description(
+        script_text, 
+        topic, 
+        original_description,
+        timestamps_text=timestamps_text,
+        include_timestamps=True
+    )
     
     print("📝 Generating tags...")
     tags = extract_and_generate_tags(topic, original_tags, script_text)
@@ -170,7 +206,8 @@ def generate_full_metadata(
         'description': description,
         'tags': tags,
         'original_title': original_title,
-        'topic': topic
+        'topic': topic,
+        'has_timestamps': bool(timestamps_text)
     }
 
 

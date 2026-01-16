@@ -239,9 +239,119 @@ def upload_video(
     except Exception as e:
         print(f"Critical upload error: {e}")
         return {'success': False, 'error': str(e)}
+
+
+def upload_captions(
+    video_id: str,
+    srt_path: str,
+    language: str = 'en',
+    name: str = 'English'
+) -> Dict:
+    """
+    Upload SRT captions to a YouTube video.
+    
+    Args:
+        video_id: YouTube video ID
+        srt_path: Path to SRT file
+        language: Language code (default 'en')
+        name: Caption track name
+    
+    Returns:
+        Dict with success status
+    """
+    if not GOOGLE_API_AVAILABLE:
+        return {'success': False, 'error': 'Google API libraries not installed'}
+    
+    credentials = get_credentials()
+    if not credentials:
+        return {'success': False, 'error': 'Not authenticated'}
+    
+    if not os.path.exists(srt_path):
+        return {'success': False, 'error': f'SRT file not found: {srt_path}'}
+    
+    try:
+        youtube = build('youtube', 'v3', credentials=credentials)
+        
+        # Caption insert request
+        body = {
+            'snippet': {
+                'videoId': video_id,
+                'language': language,
+                'name': name,
+                'isDraft': False
+            }
+        }
+        
+        media = MediaFileUpload(srt_path, mimetype='application/x-subrip')
+        
+        print(f"📝 Uploading captions: {srt_path}")
+        
+        response = youtube.captions().insert(
+            part='snippet',
+            body=body,
+            media_body=media
+        ).execute()
+        
+        print(f"✅ Captions uploaded: {response.get('id')}")
+        
+        return {
+            'success': True,
+            'caption_id': response.get('id'),
+            'message': 'Captions uploaded successfully'
+        }
         
     except Exception as e:
+        print(f"❌ Caption upload failed: {e}")
         return {'success': False, 'error': str(e)}
+
+
+def upload_video_with_captions(
+    video_path: str,
+    title: str,
+    description: str,
+    tags: List[str],
+    srt_path: str = None,
+    thumbnail_path: str = None,
+    privacy_status: str = 'private'
+) -> Dict:
+    """
+    Upload video with thumbnail and captions in one call.
+    
+    Args:
+        video_path: Path to video file
+        title: Video title
+        description: Video description (should include timestamps)
+        tags: List of tags
+        srt_path: Optional path to SRT for captions
+        thumbnail_path: Optional path to thumbnail
+        privacy_status: 'private', 'unlisted', or 'public'
+    
+    Returns:
+        Dict with video_id, video_url, success status
+    """
+    # First upload the video
+    result = upload_video(
+        video_path=video_path,
+        title=title,
+        description=description,
+        tags=tags,
+        privacy_status=privacy_status,
+        thumbnail_path=thumbnail_path
+    )
+    
+    if not result.get('success'):
+        return result
+    
+    video_id = result.get('video_id')
+    
+    # Upload captions if SRT provided
+    if srt_path and os.path.exists(srt_path):
+        caption_result = upload_captions(video_id, srt_path)
+        result['captions_uploaded'] = caption_result.get('success', False)
+        if not caption_result.get('success'):
+            result['caption_error'] = caption_result.get('error')
+    
+    return result
 
 
 if __name__ == '__main__':
@@ -253,3 +363,4 @@ if __name__ == '__main__':
         result = get_auth_url()
         if result['success']:
             print(f"Auth URL: {result['auth_url']}")
+

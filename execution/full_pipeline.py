@@ -175,16 +175,36 @@ def run_full_pipeline(
             shutil.move(video_path, final_video_path)
             video_path = str(final_video_path)
         
-        set_job_status(job_id, JobStatus.RUNNING, 95, "Generating metadata...")
+        set_job_status(job_id, JobStatus.RUNNING, 94, "Generating timestamps...")
         
-        # Step 9: Generate metadata
-        metadata = generate_metadata(video_info, script_text, topic)
+        # Step 8.6: Generate timestamps from SRT
+        timestamps_text = ""
+        if srt_path and os.path.exists(str(srt_path)):
+            from execution.generate_timestamps import generate_timestamps_from_srt
+            timestamp_result = generate_timestamps_from_srt(str(srt_path), num_chapters=10)
+            if timestamp_result.get('success'):
+                timestamps_text = timestamp_result.get('formatted', '')
+                print(f"✅ Generated {len(timestamp_result.get('chapters', []))} chapter timestamps")
+        
+        set_job_status(job_id, JobStatus.RUNNING, 96, "Generating metadata...")
+        
+        # Step 9: Generate metadata with timestamps
+        from execution.generate_metadata import generate_full_metadata
+        metadata = generate_full_metadata(
+            original_title=video_info['title'],
+            original_description=video_info.get('description', ''),
+            original_tags=video_info.get('tags', []),
+            topic=topic,
+            script_text=script_text,
+            timestamps_text=timestamps_text
+        )
         
         # Final result
         result = {
             'video_path': str(video_path) if video_path else None,
             'srt_path': str(srt_path) if srt_path else None,
             'metadata': metadata,
+            'timestamps': timestamps_text,
             'topic': topic,
             'title': topic or video_info['title'],
             'original_title': video_info['title'],
