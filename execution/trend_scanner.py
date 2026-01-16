@@ -215,106 +215,234 @@ def _calculate_viral_score(text: str) -> int:
 
 def _generate_dramatic_title(headline: str, country: Optional[str], text: str) -> str:
     """
-    Generate a dramatic title matching reference video style.
+    Generate title matching EXACT patterns from reference videos.
     
-    Reference formulas from title_style.md:
-    1. Why [X] is [NEGATIVE STATE] (The [Hook])
-    2. How [X] [DRAMATIC VERB] (And/The [Consequence])
-    3. The [DRAMATIC NOUN] of [Subject]
-    4. [X]'s $[N] Billion Mistake (The [Hook])
+    MASTER PATTERNS (56 reference titles analyzed):
+    
+    1. "The REAL TRUTH About X's Economy (The Y)" - Lebanon, Argentina, Mexico
+    2. "How X Got RICH (The Y)" / "How X Became INSANELY Rich (With No Z)"
+    3. "Why X Can't Grow (The Curse of Y)" - Italy
+    4. "The Slow DEATH of X (And What Comes Next)" - Petrodollar, Globalization
+    5. "X's $N Billion/Trillion PROBLEM/Mistake (The Y Trap)"
+    6. "How X SWALLOWED Y's Economy (The Z Trap)"
+    7. "The X Economy That Nailed Y (The Verdict)"
+    8. "Why X is UNREFORMABLE/Is Broken (The Y Trap)"
+    9. "Nothing About X Is Normal (Here's Why)"
+    10. "The END of X (The Y)"
+    11. "Why X is LOSING/WINNING Y (While Z)"
+    12. "The X Economic DISASTER/MIRACLE (Why Y)"
+    13. "Why X is POORER Than You Think (The Economic Truth)"
+    14. "Is X Rigged to Collapse? (The N Fatal Flaws)"
+    15. "How to Bankrupt a Country in N Steps (The X Story)"
+    16. "Why X Can't Quit Y (The Z Curse)"
     """
     import random
+    import re
     text_lower = text.lower()
     
-    # Extract dollar amounts if present
-    import re
-    money_match = re.search(r'\$?([\d.]+)\s*(billion|trillion|million)', text_lower)
-    money_amount = None
+    # Extract dollar/trillion amounts
+    money_match = re.search(r'\$?([\d.,]+)\s*(billion|trillion|million)', text_lower)
+    money_str = None
     if money_match:
-        money_amount = f"${money_match.group(1)} {money_match.group(2).title()}"
+        num = money_match.group(1).replace(',', '')
+        money_str = f"${num} {money_match.group(2).title()}"
     
-    # FORMULA 1: Why [Country] is POORER Than You Think
-    # Use for: economic decline, poverty, falling standards
-    if any(w in text_lower for w in ["poverty", "poor", "poorer", "declining", "falling", "shrinking"]):
+    # =================================================
+    # PATTERN 1: The REAL TRUTH About X's Economy (The Y)
+    # =================================================
+    if any(w in text_lower for w in ["truth", "reality", "real", "actually", "really"]):
         if country:
-            hooks = ["The Economic Truth", "The Hidden Crisis", "No One Talks About This"]
-            return f"Why {country} is POORER Than You Think ({random.choice(hooks)})"
+            hooks = [
+                "The Greatest Ponzi Scheme",
+                "The World's Greatest Financial Laboratory",
+                "Boom or Bust?",
+                "The Hidden Truth"
+            ]
+            return f"The REAL TRUTH About {country}'s Economy ({random.choice(hooks)})"
     
-    # FORMULA 2: Why [Country] Can't Grow (The Curse of X)
-    # Use for: structural problems, stagnation
-    if any(w in text_lower for w in ["stagnant", "growth", "gdp", "can't grow", "no growth"]):
+    # =================================================
+    # PATTERN 2: How X Got RICH / Became INSANELY Rich
+    # =================================================
+    if any(w in text_lower for w in ["rich", "wealthy", "prosperity", "boom", "growth", "success"]):
         if country:
-            curses = ["The Demographic Trap", "The Debt Spiral", "The Structural Crisis"]
+            hooks = [
+                "And Why They Don't Spend It",
+                "With No Resources",
+                "It Wasn't Just Oil",
+                "The Masterclass in Resource Control",
+                "The Real Reason"
+            ]
+            return f"How {country} Actually Got RICH ({random.choice(hooks)})"
+    
+    # =================================================
+    # PATTERN 3: Why X Can't Grow (The Curse of Y)
+    # =================================================
+    if any(w in text_lower for w in ["stagnant", "can't grow", "declining", "shrinking", "demographic"]):
+        if country:
+            curses = [
+                "The Curse of The Lira",
+                "The Demographic Trap",
+                "The Structural Crisis",
+                "The Union Trap"
+            ]
             return f"Why {country} Can't Grow ({random.choice(curses)})"
     
-    # FORMULA 3: The Slow DEATH of [X] (And What Comes Next)
-    # Use for: collapse, dying industries, end of era
-    if any(w in text_lower for w in ["dying", "death", "end of", "collapse", "collapsing", "obsolete"]):
+    # =================================================
+    # PATTERN 4: The Slow DEATH of X (And What Comes Next)
+    # =================================================
+    if any(w in text_lower for w in ["death", "dying", "collapse", "end of", "dead"]):
+        subjects = {
+            "petrodollar": "The Petrodollar",
+            "dollar": "The Dollar",
+            "globalization": "Globalization",
+            "home ownership": "Home Ownership",
+            "growth": "Economic Growth"
+        }
+        for key, val in subjects.items():
+            if key in text_lower:
+                return f"The Slow DEATH of {val} (And What Comes Next)"
         if country:
             return f"The Slow DEATH of {country}'s Economy (And What Comes Next)"
-        else:
-            # Extract subject from headline
-            return f"The Slow DEATH of {_extract_subject(headline)} (And What Comes Next)"
     
-    # FORMULA 4: [Country]'s $X Billion Mistake (The [Trap])
-    # Use for: policy failures with numbers
-    if money_amount and country:
-        traps = ["The Green Energy Trap", "The Trade Trap", "The Debt Trap", "The Policy Trap"]
-        return f"{country}'s {money_amount} Mistake ({random.choice(traps)})"
+    # =================================================
+    # PATTERN 5: X's $N Billion Mistake/PROBLEM (The Y Trap)
+    # =================================================
+    if money_str and country:
+        hooks = [
+            "The Green Energy Trap",
+            "The End of an Era",
+            "The Trade Trap",
+            "The Policy Trap"
+        ]
+        return f"{country}'s {money_str} Mistake ({random.choice(hooks)})"
     
-    # FORMULA 5: Why Invading [Country] is IMPOSSIBLE
-    # Use for: military, invasion, defense
-    if any(w in text_lower for w in ["invasion", "invade", "military", "defense", "army"]):
-        if country:
-            return f"Why Invading {country} is IMPOSSIBLE (It's Not the Army)"
-    
-    # FORMULA 6: The [Country] Economy That [VERB] [Leader]
-    # Use for: political consequences of economy
-    if any(w in text_lower for w in ["arrested", "coup", "overthrow", "resign", "ousted", "verdict"]):
-        if country:
-            leaders = _extract_leader(text)
-            if leaders:
-                return f"The {country} Economy That Nailed {leaders} (The Verdict)"
-            return f"The {country} Economy That DESTROYED Its Leaders (The Verdict)"
-    
-    # FORMULA 7: Why [Country]'s [X] is Worse Than You Think
-    # Use for: trade wars, sanctions, tariffs
-    if any(w in text_lower for w in ["tariff", "sanction", "trade war", "embargo"]):
-        if country:
-            return f"Why {country}'s Trade War is Worse Than You Think (The Hidden Cost)"
-        return "The Trade War That Will DEVASTATE Everyone (It's Already Happening)"
-    
-    # FORMULA 8: How [Subject] SWALLOWED [Country]'s Economy
-    # Use for: housing, debt, single industry dominance
+    # =================================================
+    # PATTERN 6: How X SWALLOWED Y's Economy (The Z Trap)
+    # =================================================
     if any(w in text_lower for w in ["housing", "real estate", "property", "bubble"]):
         if country:
             return f"How Housing SWALLOWED {country}'s Economy (The Real Estate Trap)"
     
-    # FORMULA 9: Why Europe's/[Region]'s Economy is Collapsing (The N Fatal Wounds)
-    # Use for: multiple crises
-    if any(w in text_lower for w in ["crisis", "crises", "multiple", "wounds"]):
+    # =================================================
+    # PATTERN 7: The X Economy That Nailed Y (The Verdict)
+    # =================================================
+    leader = _extract_leader(text)
+    if any(w in text_lower for w in ["arrested", "ousted", "verdict", "coup", "overthrow"]):
+        if country and leader:
+            return f"The {country} Economy That Nailed {leader} (The Verdict)"
+        elif country:
+            return f"The {country} Economy That DESTROYED Its Leaders (The Verdict)"
+    
+    # =================================================
+    # PATTERN 8: Why X is UNREFORMABLE/Is Broken (The Y)
+    # =================================================
+    if any(w in text_lower for w in ["broken", "unreformable", "unfixable", "can't be fixed"]):
+        if country:
+            hooks = [
+                "The Union Trap",
+                "The End of Empire",
+                "The Structural Crisis"
+            ]
+            return f"Why {country}'s Economy Is Broken ({random.choice(hooks)})"
+    
+    # =================================================
+    # PATTERN 9: Nothing About X Is Normal (Here's Why)
+    # =================================================
+    if any(w in text_lower for w in ["vanguard", "blackrock", "fed", "central bank"]):
+        subjects = ["Vanguard", "BlackRock", "The Fed", "Central Banks"]
+        for s in subjects:
+            if s.lower() in text_lower:
+                return f"Nothing About {s} Is Normal (Here's Why)"
+    
+    # =================================================
+    # PATTERN 10: The END of X (The Y)
+    # =================================================
+    if any(w in text_lower for w in ["end of", "ending", "finished"]):
+        hooks = [
+            "The Population Collapse",
+            "The New Rules Analysis",
+            "And What Comes Next"
+        ]
+        if country:
+            return f"The END of {country}'s Economic Growth ({random.choice(hooks)})"
+    
+    # =================================================
+    # PATTERN 11: Why X is WINNING While Y is LOSING
+    # =================================================
+    if any(w in text_lower for w in ["winning", "losing", "versus", "vs", "beating"]):
+        if country:
+            return f"Why {country} Is Winning While Others Fail (The Hidden Advantage)"
+    
+    # =================================================
+    # PATTERN 12: The X Economic DISASTER/MIRACLE (Why Y)
+    # =================================================
+    if any(w in text_lower for w in ["disaster", "catastrophe", "failure"]):
+        if country:
+            return f"The {country} Economic DISASTER Explained (Why It Never Ends)"
+    if any(w in text_lower for w in ["miracle", "success", "boom"]):
+        if country:
+            return f"The {country} Economic MIRACLE (How They Beat The West)"
+    
+    # =================================================
+    # PATTERN 13: Why X is POORER Than You Think
+    # =================================================
+    if any(w in text_lower for w in ["poor", "poverty", "poorer", "broke"]):
+        if country:
+            return f"Why {country} is POORER Than You Think (The Economic Truth)"
+    
+    # =================================================
+    # PATTERN 14: Is X Rigged to Collapse?
+    # =================================================
+    if any(w in text_lower for w in ["rigged", "manipulated", "rigging"]):
+        if country:
+            return f"Is {country}'s Economy Rigged to Collapse? (The 5 Fatal Flaws)"
+    
+    # =================================================
+    # PATTERN 15: Debt/Budget specific
+    # =================================================
+    if any(w in text_lower for w in ["debt", "budget", "deficit", "trillion"]):
+        if country:
+            hooks = [
+                "The Hidden Numbers",
+                "The 5 Fatal Flaws",
+                "And What Comes Next"
+            ]
+            return f"Why {country}'s Debt Crisis is UNFIXABLE ({random.choice(hooks)})"
+    
+    # =================================================
+    # PATTERN 16: Crisis/Collapse
+    # =================================================
+    if any(w in text_lower for w in ["crisis", "collapse", "collapsing"]):
         if country:
             return f"Why {country}'s Economy is COLLAPSING (The 5 Fatal Wounds)"
     
-    # FORMULA 10: Budget/Debt specific
-    if any(w in text_lower for w in ["budget", "debt", "deficit", "trillion", "billion"]):
+    # =================================================
+    # PATTERN 17: Engineer/Industry obsolete
+    # =================================================
+    if any(w in text_lower for w in ["obsolete", "engineers", "industry"]):
         if country:
-            return f"Why {country}'s Debt Crisis is UNFIXABLE (The Hidden Numbers)"
+            return f"Why {country}'s Engineers Are Obsolete (The Hidden Crisis)"
     
-    # DEFAULT: Why [Country] is in SERIOUS Trouble (The [Category] Crisis)
+    # =================================================
+    # PATTERN 18: Invasion (ONLY for major powers!)
+    # =================================================
+    if any(w in text_lower for w in ["invasion", "invade", "invading"]):
+        if country and country in ["USA", "United States", "Russia", "China"]:
+            return f"Why Invading {country} is IMPOSSIBLE (It's Not the Army)"
+    
+    # =================================================
+    # DEFAULT: The REAL TRUTH About X's Economy
+    # =================================================
     if country:
-        category = _categorize_news(text_lower)
-        crisis_types = {
-            "economics": "The Economic Crisis",
-            "energy": "The Energy Crisis", 
-            "geopolitics": "The Geopolitical Crisis",
-            "political": "The Political Crisis",
-            "general": "The Hidden Crisis"
-        }
-        hook = crisis_types.get(category, "The Hidden Crisis")
-        return f"Why {country} is in SERIOUS Trouble ({hook})"
+        hooks = [
+            "The Hidden Crisis",
+            "The Economic Truth",
+            "Here's Why",
+            "The 5 Fatal Flaws"
+        ]
+        return f"The REAL TRUTH About {country}'s Economy ({random.choice(hooks)})"
     
-    # Fallback for no country detected
+    # Fallback
     return headline[:60]
 
 
