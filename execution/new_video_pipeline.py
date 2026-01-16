@@ -727,11 +727,23 @@ class NewVideoPipeline:
             # Show preview
             preview = script[:2000] if len(script) > 2000 else script
             
+            # Send script as downloadable file
+            try:
+                with open(script_path, 'rb') as script_file:
+                    await self.context.bot.send_document(
+                        chat_id=self.chat_id,
+                        document=script_file,
+                        filename=f"script_{self.state['title'][:30].replace(' ', '_')}.txt",
+                        caption="📄 Full script attached for easy copying"
+                    )
+            except Exception as e:
+                print(f"Failed to send script file: {e}")
+            
             await self.send_keyboard(
                 f"📜 **Script Generated**\n\n"
                 f"**Word Count:** {word_count}\n"
                 f"**Title:** {self.state['title']}\n\n"
-                f"**Preview:**\n```\n{preview}...\n```\n\n"
+                f"📄 Full script sent as file above.\n\n"
                 f"Approve script?",
                 [
                     ("✅ Approve Script", "newvideo_script_approve"),
@@ -787,8 +799,37 @@ class NewVideoPipeline:
         )
         self.state["images"] = images
         
+        # Get actual counts from result dict
+        total_chunks = images.get('total_chunks', 0)
+        successful = images.get('successful', 0)
+        failed = images.get('failed', 0)
+        
+        # Send sample images to Telegram (first 3)
+        chunks_data = images.get('chunks', [])
+        sent_previews = 0
+        for chunk_result in chunks_data[:3]:  # First 3 as preview
+            if chunk_result.get('success') and chunk_result.get('path'):
+                try:
+                    with open(chunk_result['path'], 'rb') as img_file:
+                        await self.context.bot.send_photo(
+                            chat_id=self.chat_id,
+                            photo=img_file,
+                            caption=f"Image {chunk_result.get('index', 0)+1}/{total_chunks}"
+                        )
+                        sent_previews += 1
+                except Exception as e:
+                    print(f"Failed to send preview image: {e}")
+        
+        status_msg = f"🖼️ **Image Generation Complete**\n\n"
+        status_msg += f"✅ Generated: {successful}/{total_chunks} images\n"
+        if failed > 0:
+            status_msg += f"❌ Failed: {failed}\n"
+        if sent_previews > 0:
+            status_msg += f"📸 Previewed: {sent_previews} samples above\n"
+        status_msg += f"\nApprove images?"
+        
         await self.send_keyboard(
-            f"🖼️ **{len(images)} Images Generated**\n\nApprove images?",
+            status_msg,
             [
                 ("✅ Approve Images", "newvideo_images_approve"),
                 ("🔄 Regenerate", "newvideo_images_regen")

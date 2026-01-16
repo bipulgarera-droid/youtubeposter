@@ -406,42 +406,113 @@ def generate_narrative_script(
 def scale_beats_for_duration(beats: List[Dict], target_words: int) -> List[Dict]:
     """
     Scale beat structure for longer videos by adding more beats.
-    Each beat stays under 400 words.
+    
+    For a 4,500 word script (~30 min), we need to add:
+    - Context beats (background, historical, comparative)
+    - Deep dive beats (mechanism parts, case studies)
+    - Objection handling beats
     """
     current_total = sum(b['word_target'] for b in beats)
     
     if target_words <= current_total:
         return beats
     
-    # Calculate how many extra beats we need
     extra_words_needed = target_words - current_total
     
-    # Beats that can be duplicated for depth
-    expandable = ['context', 'mechanism', 'math', 'scenarios', 'objections']
+    # Additional beat templates we can insert
+    expansion_beats = [
+        {
+            "id": "context",
+            "name": "Historical Context",
+            "word_target": 400,
+            "purpose": "Provide historical background that makes the current situation understandable",
+            "required_elements": ["timeline", "key events", "how we got here"],
+            "ends_with": "transition to present day"
+        },
+        {
+            "id": "case_study_1",
+            "name": "Case Study: The First Victim",
+            "word_target": 450,
+            "purpose": "Vivid real-world example that makes the abstract concrete",
+            "required_elements": ["named example", "specific numbers", "human impact"],
+            "ends_with": "but this was just the beginning"
+        },
+        {
+            "id": "mechanism_deep",
+            "name": "The Hidden Mechanics",
+            "word_target": 500,
+            "purpose": "Deep dive into HOW the mechanism actually works",
+            "required_elements": ["step by step breakdown", "analogies", "why most people miss this"],
+            "ends_with": "setup for the math"
+        },
+        {
+            "id": "case_study_2",
+            "name": "Case Study: The Cascade",
+            "word_target": 400,
+            "purpose": "Second example showing the pattern repeating or accelerating",
+            "required_elements": ["different geography or sector", "larger scale", "lessons not learned"],
+            "ends_with": "and here's where it gets personal"
+        },
+        {
+            "id": "objections",
+            "name": "Why The Skeptics Are Wrong",
+            "word_target": 350,
+            "purpose": "Address common counterarguments and why they fail",
+            "required_elements": ["steel-man the objection", "then demolish it with data", "acknowledge nuance"],
+            "ends_with": "but even if they were right..."
+        },
+        {
+            "id": "scenarios",
+            "name": "Three Scenarios",
+            "word_target": 450,
+            "purpose": "Paint possible futures - good, bad, and ugly",
+            "required_elements": ["best case", "worst case", "most likely case", "specific numbers for each"],
+            "ends_with": "so what should YOU do?"
+        },
+        {
+            "id": "global_impact",
+            "name": "The Ripple Effects",
+            "word_target": 400,
+            "purpose": "How this affects other markets, countries, or your daily life",
+            "required_elements": ["second-order effects", "supply chains", "currency impacts"],
+            "ends_with": "this is why it matters to everyone"
+        },
+    ]
     
     scaled_beats = []
-    part_counter = {}
+    expansion_index = 0
     
     for beat in beats:
         beat_copy = beat.copy()
+        scaled_beats.append(beat_copy)
         
-        if beat['id'] in expandable and extra_words_needed > 0:
-            # Add "Part 1" suffix
-            part_counter[beat['id']] = 1
-            beat_copy['name'] = f"{beat['name']} Part 1"
-            scaled_beats.append(beat_copy)
-            
-            # Add Part 2 if needed
-            if extra_words_needed > beat['word_target']:
-                part_counter[beat['id']] = 2
-                beat_part2 = beat.copy()
-                beat_part2['id'] = f"{beat['id']}_2"
-                beat_part2['name'] = f"{beat['name']} Part 2"
-                beat_part2['purpose'] = f"Continue {beat['purpose'].lower()} with additional depth"
-                scaled_beats.append(beat_part2)
-                extra_words_needed -= beat['word_target']
-        else:
-            scaled_beats.append(beat_copy)
+        # After certain beats, insert expansion beats if we need more words
+        if beat['id'] == 'hook' and extra_words_needed > 400:
+            # Insert context after hook
+            if expansion_index < len(expansion_beats):
+                scaled_beats.append(expansion_beats[expansion_index].copy())
+                extra_words_needed -= expansion_beats[expansion_index]['word_target']
+                expansion_index += 1
+        
+        elif beat['id'] == 'mechanism' and extra_words_needed > 400:
+            # Insert case studies and deep dive after mechanism
+            while extra_words_needed > 400 and expansion_index < len(expansion_beats):
+                exp_beat = expansion_beats[expansion_index].copy()
+                scaled_beats.append(exp_beat)
+                extra_words_needed -= exp_beat['word_target']
+                expansion_index += 1
+                if expansion_index >= 4:  # Stop after 4 expansions mid-script
+                    break
+        
+        elif beat['id'] == 'math' and extra_words_needed > 300:
+            # Insert remaining expansions after math
+            while extra_words_needed > 300 and expansion_index < len(expansion_beats):
+                exp_beat = expansion_beats[expansion_index].copy()
+                scaled_beats.append(exp_beat)
+                extra_words_needed -= exp_beat['word_target']
+                expansion_index += 1
+    
+    print(f"📊 Scaled from {len(beats)} to {len(scaled_beats)} beats for {target_words} word target")
     
     return scaled_beats
 
