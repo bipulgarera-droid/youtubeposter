@@ -848,12 +848,20 @@ class NewVideoPipeline:
         await self.send_message("🎬 Generating video...\n\n⏳ This involves generating audio for each chunk and assembling the video. This may take several minutes for longer scripts.")
         self.state["step"] = "generating_video"
         
-        # Get image data from state
-        images_result = self.state.get("images", {})
-        image_chunks = images_result.get("chunks", [])
+        # Get image data from state - handle both old (list) and new (dict) formats
+        images_data = self.state.get("images", {})
+        
+        # New format: dict with 'chunks' key
+        if isinstance(images_data, dict):
+            image_chunks = images_data.get("chunks", [])
+        # Legacy format: images was stored as a list directly
+        elif isinstance(images_data, list):
+            image_chunks = images_data
+        else:
+            image_chunks = []
         
         if not image_chunks:
-            await self.send_message("❌ No image data found. Please regenerate images first.")
+            await self.send_message("❌ No image data found. Please use /newvideo → Start Fresh to regenerate images with the new format.")
             return
         
         await self.send_message(f"📊 Processing {len(image_chunks)} chunks...")
