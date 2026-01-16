@@ -29,3 +29,7 @@ Pillow==10.2.0
 
 # Whisper/Groq
 groq
+
+# Supabase Storage
+supabase==2.3.0
+

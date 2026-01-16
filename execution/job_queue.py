@@ -148,3 +148,66 @@ def queue_news_pipeline(news_url: str, topic: str,
     )
     
     return job_id
+
+
+def queue_step_pipeline(youtube_url: str, topic: Optional[str] = None,
+                        telegram_chat_id: Optional[int] = None) -> str:
+    """
+    Queue a step-by-step pipeline job that pauses for approval at each step.
+    
+    Args:
+        youtube_url: YouTube video URL or news URL
+        topic: Optional topic override
+        telegram_chat_id: Telegram chat ID for sending approvals (required)
+    
+    Returns:
+        Job ID for tracking
+    """
+    from execution.step_pipeline import run_step_by_step_pipeline
+    
+    job_id = create_job_id()
+    queue = get_queue('default')
+    
+    set_job_status(job_id, JobStatus.PENDING, 0, "Step-by-step pipeline queued...")
+    
+    queue.enqueue(
+        run_step_by_step_pipeline,
+        args=(job_id, youtube_url),
+        kwargs={'topic': topic, 'telegram_chat_id': telegram_chat_id},
+        job_timeout='3h',  # 3 hour timeout (waiting for approvals)
+        result_ttl=86400 * 7,  # Keep result for 7 days
+        failure_ttl=86400 * 7
+    )
+    
+    return job_id
+
+
+def approve_step(job_id: str, step_name: str) -> bool:
+    """Approve a step in step-by-step pipeline."""
+    redis = get_redis_connection()
+    key = f"step_status:{job_id}:{step_name}"
+    
+    data = redis.get(key)
+    if data:
+        step_data = json.loads(data)
+        step_data['status'] = 'approved'
+        step_data['updated_at'] = datetime.now().isoformat()
+        redis.set(key, json.dumps(step_data), ex=86400 * 7)
+        return True
+    return False
+
+
+def reject_step(job_id: str, step_name: str) -> bool:
+    """Reject a step (cancel pipeline)."""
+    redis = get_redis_connection()
+    key = f"step_status:{job_id}:{step_name}"
+    
+    data = redis.get(key)
+    if data:
+        step_data = json.loads(data)
+        step_data['status'] = 'rejected'
+        step_data['updated_at'] = datetime.now().isoformat()
+        redis.set(key, json.dumps(step_data), ex=86400 * 7)
+        return True
+    return False
+

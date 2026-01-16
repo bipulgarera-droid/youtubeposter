@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 # Conversation states
-CHOOSING_MODE, WAITING_URL, CHOOSING_LENGTH, WAITING_SEARCH_KEYWORD, CHOOSING_NEWS_ARTICLE, CHOOSING_JOB_TO_CANCEL = range(6)
+CHOOSING_MODE, WAITING_URL, CHOOSING_LENGTH, WAITING_SEARCH_KEYWORD, CHOOSING_NEWS_ARTICLE, CHOOSING_JOB_TO_CANCEL, CHOOSING_PIPELINE_MODE = range(7)
 
 # Length options
 LENGTH_OPTIONS = [
@@ -64,6 +64,15 @@ def get_main_menu_keyboard():
         [InlineKeyboardButton("📺 Reference Video (YouTube URL)", callback_data="mode_video")],
         [InlineKeyboardButton("📰 News Article", callback_data="mode_news")],
         [InlineKeyboardButton("🔍 Search News First", callback_data="mode_search")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_pipeline_mode_keyboard():
+    """Choose between full auto or step-by-step pipeline."""
+    keyboard = [
+        [InlineKeyboardButton("🚀 Full Pipeline (Auto)", callback_data="pipeline_full")],
+        [InlineKeyboardButton("👁️ Step-by-Step (Review Each)", callback_data="pipeline_step")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -179,14 +188,45 @@ async def receive_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     else:
         context.user_data['news_url'] = url
     
-    # Ask for video length
+    # Ask for pipeline mode (full vs step-by-step)
     await update.message.reply_text(
-        "⏱️ *Video Length*\n\n"
-        "How long should the video be?",
+        "🎬 *Pipeline Mode*\n\n"
+        "How would you like to run the pipeline?",
         parse_mode='Markdown',
-        reply_markup=get_length_keyboard()
+        reply_markup=get_pipeline_mode_keyboard()
     )
+    return CHOOSING_PIPELINE_MODE
+
+
+async def pipeline_mode_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle pipeline mode selection (full vs step-by-step)."""
+    query = update.callback_query
+    await query.answer()
+    
+    pipeline_mode = query.data.replace("pipeline_", "")
+    context.user_data['pipeline_mode'] = pipeline_mode
+    
+    if pipeline_mode == "step":
+        await query.edit_message_text(
+            "👁️ *Step-by-Step Mode*\n\n"
+            "I'll pause after each step and show you the output.\n"
+            "You can approve, regenerate, or cancel at any point.\n\n"
+            "⏱️ How long should the video be?",
+            parse_mode='Markdown',
+            reply_markup=get_length_keyboard()
+        )
+    else:
+        await query.edit_message_text(
+            "🚀 *Full Pipeline Mode*\n\n"
+            "I'll run everything automatically and notify you when done.\n\n"
+            "⏱️ How long should the video be?",
+            parse_mode='Markdown',
+            reply_markup=get_length_keyboard()
+        )
+    
     return CHOOSING_LENGTH
+
+
 
 
 async def length_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -199,51 +239,92 @@ async def length_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     context.user_data['target_minutes'] = length
     
     mode = context.user_data.get('mode', 'video')
+    pipeline_mode = context.user_data.get('pipeline_mode', 'full')
     chat_id = update.effective_chat.id
     
     await query.edit_message_text("🔄 *Queuing your video...*", parse_mode='Markdown')
     
     try:
-        if mode == "video":
-            youtube_url = context.user_data.get('youtube_url')
-            job_id = queue_full_pipeline(
-                youtube_url=youtube_url,
-                topic=None,  # Will extract from video title
-                telegram_chat_id=chat_id
-            )
-            source_info = f"📺 YouTube: {youtube_url[:40]}..."
+        # Choose pipeline based on mode
+        if pipeline_mode == "step":
+            # Use step-by-step pipeline with approval at each step
+            from execution.job_queue import queue_step_pipeline
             
-        elif mode == "news":
-            news_url = context.user_data.get('news_url')
-            # For news mode, topic is extracted from headline
-            job_id = queue_news_pipeline(
-                news_url=news_url,
-                topic=None,  # Will extract from article headline
-                telegram_chat_id=chat_id
-            )
-            source_info = f"📰 News: {news_url[:40]}..."
+            if mode == "video":
+                youtube_url = context.user_data.get('youtube_url')
+                job_id = queue_step_pipeline(
+                    youtube_url=youtube_url,
+                    topic=None,
+                    telegram_chat_id=chat_id
+                )
+                source_info = f"📺 YouTube: {youtube_url[:40]}..."
+            else:
+                # News/search mode
+                news_url = context.user_data.get('news_url', '')
+                news_article = context.user_data.get('selected_article', {})
+                if news_article:
+                    news_url = news_article.get('url', news_url)
+                    topic = news_article.get('title', '')
+                else:
+                    topic = None
+                
+                job_id = queue_step_pipeline(
+                    youtube_url=news_url,  # We'll handle news URLs too
+                    topic=topic,
+                    telegram_chat_id=chat_id
+                )
+                source_info = f"📰 News: {news_url[:40]}..."
             
-        elif mode == "search":
-            news_article = context.user_data.get('selected_article', {})
-            news_url = news_article.get('url', '')
-            topic = news_article.get('title', '')
-            
-            job_id = queue_news_pipeline(
-                news_url=news_url,
-                topic=topic,
-                telegram_chat_id=chat_id
+            await query.edit_message_text(
+                f"👁️ *Step-by-Step Pipeline Started!*\n\n"
+                f"📹 Job ID: `{job_id}`\n"
+                f"{source_info}\n"
+                f"⏱️ Length: {length} minutes\n\n"
+                f"I'll send you each step for review.\n"
+                f"Watch for approval requests!",
+                parse_mode='Markdown'
             )
-            source_info = f"🔍 {topic[:40]}..."
-        
-        await query.edit_message_text(
-            f"✅ *Job Queued!*\n\n"
-            f"📹 Job ID: `{job_id}`\n"
-            f"{source_info}\n"
-            f"⏱️ Length: {length} minutes\n\n"
-            f"I'll notify you when it's complete.\n"
-            f"Use /status to check progress.",
-            parse_mode='Markdown'
-        )
+        else:
+            # Full auto pipeline
+            if mode == "video":
+                youtube_url = context.user_data.get('youtube_url')
+                job_id = queue_full_pipeline(
+                    youtube_url=youtube_url,
+                    topic=None,
+                    telegram_chat_id=chat_id
+                )
+                source_info = f"📺 YouTube: {youtube_url[:40]}..."
+                
+            elif mode == "news":
+                news_url = context.user_data.get('news_url')
+                job_id = queue_news_pipeline(
+                    news_url=news_url,
+                    topic=None,
+                    telegram_chat_id=chat_id
+                )
+                source_info = f"📰 News: {news_url[:40]}..."
+                
+            elif mode == "search":
+                news_article = context.user_data.get('selected_article', {})
+                news_url = news_article.get('url', '')
+                topic = news_article.get('title', '')
+                
+                job_id = queue_news_pipeline(
+                    news_url=news_url,
+                    topic=topic,
+                    telegram_chat_id=chat_id
+                )
+                source_info = f"🔍 {topic[:40]}..."
+            
+            await query.edit_message_text(
+                f"✅ *Job Queued!*\n\n"
+                f"📹 Job ID: `{job_id}`\n"
+                f"{source_info}\n"
+                f"⏱️ Length: {length} minutes\n\n"
+                f"I'll notify you when it's complete.\n"
+                f"Use /status to check progress.",
+                parse_mode='Markdown'
+            )
         
         # Clear conversation data
         context.user_data.clear()
@@ -517,6 +598,9 @@ def main():
             CHOOSING_LENGTH: [
                 CallbackQueryHandler(length_selected, pattern="^length_"),
             ],
+            CHOOSING_PIPELINE_MODE: [
+                CallbackQueryHandler(pipeline_mode_selected, pattern="^pipeline_"),
+            ],
             WAITING_SEARCH_KEYWORD: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_keyword),
             ],
@@ -541,11 +625,66 @@ def main():
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("digest", digest_command))
     
+    # Step approval callbacks (outside conversation)
+    application.add_handler(CallbackQueryHandler(handle_step_approval, pattern="^approve_"))
+    application.add_handler(CallbackQueryHandler(handle_step_regenerate, pattern="^regen_"))
+    
     print("🤖 Bot started! Listening for messages...")
     
     # Run the bot
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
+async def handle_step_approval(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle step approval callback from step-by-step pipeline."""
+    query = update.callback_query
+    await query.answer("✅ Approved!")
+    
+    # Parse callback data: approve_jobid_stepname
+    parts = query.data.split("_", 2)
+    if len(parts) < 3:
+        return
+    
+    job_id = parts[1]
+    step_name = parts[2]
+    
+    from execution.job_queue import approve_step
+    success = approve_step(job_id, step_name)
+    
+    if success:
+        await query.edit_message_text(
+            f"✅ *Step Approved*\n\n"
+            f"Continuing to next step...",
+            parse_mode='Markdown'
+        )
+    else:
+        await query.edit_message_text(f"⚠️ Could not approve step (already processed?)")
+
+
+async def handle_step_regenerate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle step regeneration request."""
+    query = update.callback_query
+    await query.answer("🔄 Regeneration requested")
+    
+    # For now, just reject and let user restart
+    parts = query.data.split("_", 2)
+    if len(parts) < 3:
+        return
+    
+    job_id = parts[1]
+    step_name = parts[2]
+    
+    from execution.job_queue import reject_step
+    reject_step(job_id, step_name)
+    
+    await query.edit_message_text(
+        f"🔄 *Regeneration Requested*\n\n"
+        f"This step will be regenerated.\n"
+        f"(Note: Full regeneration coming soon - for now pipeline will restart)",
+        parse_mode='Markdown'
+    )
+
+
 if __name__ == "__main__":
     main()
+
