@@ -161,15 +161,16 @@ async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔄 Fetching today's top stories...")
     
     try:
-        from execution.search_news import search_news_for_topic
+        from execution.search_news import search_news
         
         # Default topics for the channel
         topics = ["silver gold commodities", "federal reserve", "economic collapse"]
         
         all_news = []
         for topic in topics:
-            results = search_news_for_topic(topic, max_results=3)
-            all_news.extend(results)
+            result = search_news(topic, num_articles=3)
+            if result and 'articles' in result:
+                all_news.extend(result['articles'])
         
         if not all_news:
             await update.message.reply_text("No news found today.")
