@@ -345,7 +345,7 @@ def concatenate_segments(segment_paths: List[str], output_path: str) -> bool:
         return False
 
 
-def build_video_from_chunks(chunks: List[Dict]) -> Dict:
+def build_video_from_chunks(chunks: List[Dict], progress_callback=None) -> Dict:
     """
     Build complete video from chunk data.
     
@@ -354,6 +354,9 @@ def build_video_from_chunks(chunks: List[Dict]) -> Dict:
     - text: str
     - audio_path: str (path to MP3)
     - screenshot_path: str or None (path to screenshot)
+    
+    Args:
+        progress_callback: Optional callable that takes (current, total, message) for progress updates
     
     Returns dict with success status and output path.
     """
@@ -382,6 +385,13 @@ def build_video_from_chunks(chunks: List[Dict]) -> Dict:
         stock_video_path = chunk.get('stock_video_path')  # Stock video if selected
         
         print(f"  [{i+1}/{len(chunks)}] Processing chunk {chunk_id}...")
+        
+        # Progress callback every 20 segments
+        if progress_callback and (i + 1) % 20 == 0:
+            try:
+                progress_callback(i + 1, len(chunks), f"⏳ Assembling video: {i + 1}/{len(chunks)} segments...")
+            except Exception as e:
+                print(f"Progress callback error: {e}")
         
         segment_path = create_video_segment(
             chunk_id=chunk_id,

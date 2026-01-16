@@ -81,12 +81,21 @@ except ImportError:
 
 # Supabase storage for persisting outputs
 try:
-    from execution.storage_helper import upload_file, upload_text
+    from execution.storage_helper import (
+        upload_file, upload_text, upload_state, download_file, 
+        get_latest_job_with_assets, download_state, cleanup_old_jobs
+    )
     STORAGE_AVAILABLE = True
 except ImportError:
     STORAGE_AVAILABLE = False
     upload_file = None
     upload_text = None
+    upload_state = None
+    download_file = None
+    get_latest_job_with_assets = None
+    download_state = None
+    cleanup_old_jobs = None
+
 
 
 class NewVideoPipeline:
@@ -257,6 +266,103 @@ class NewVideoPipeline:
         )
         return True
     
+    async def _resume_from_cloud_subtitled(self):
+        """Resume from subtitled video in Supabase - skip to metadata step."""
+        await self.send_message("☁️ Resuming from cloud storage (subtitled video)...")
+        
+        job_id = self.state.get("cloud_job_id")
+        assets = self.state.get("cloud_assets", {})
+        
+        if not job_id or not assets.get("subtitled_video"):
+            await self.send_message("❌ No subtitled video found in cloud storage.")
+            await self.start()
+            return
+        
+        # Try to download saved state
+        if download_state:
+            saved_state = download_state(job_id)
+            if saved_state:
+                # Restore key fields from saved state
+                self.state["title"] = saved_state.get("title", "Resumed from Cloud")
+                self.state["topic"] = saved_state.get("topic", "")
+                self.state["script"] = saved_state.get("script", "")
+                await self.send_message(f"📋 Restored state: {self.state.get('title', 'Unknown')}")
+        
+        # Download subtitled video to local
+        self.supabase_job_id = job_id
+        subtitled_storage_path = assets["subtitled_video"]
+        local_subtitled_path = os.path.join(self.output_dir, "video_subtitled.mp4")
+        
+        if download_file and download_file(subtitled_storage_path, local_subtitled_path):
+            self.state["subtitled_video_path"] = local_subtitled_path
+            self.state["subtitled_video_url"] = f"https://fjbowxwqaegvpjyinnsa.supabase.co/storage/v1/object/public/youtube-pipeline/{subtitled_storage_path}"
+            
+            # Download SRT if available
+            if assets.get("srt"):
+                local_srt_path = os.path.join(self.output_dir, "video.srt")
+                if download_file(assets["srt"], local_srt_path):
+                    self.state["srt_path"] = local_srt_path
+            
+            await self.send_message("✅ Subtitled video downloaded. Proceeding to metadata generation...")
+            await self._generate_metadata()
+        else:
+            await self.send_message("❌ Failed to download subtitled video from cloud storage.")
+            await self.start()
+    
+    async def _resume_from_cloud_images(self):
+        """Resume from images in Supabase - generate audio & video."""
+        await self.send_message("☁️ Resuming from cloud storage (images)...")
+        
+        job_id = self.state.get("cloud_job_id")
+        assets = self.state.get("cloud_assets", {})
+        
+        if not job_id or not assets.get("images"):
+            await self.send_message("❌ No images found in cloud storage.")
+            await self.start()
+            return
+        
+        # Try to download saved state
+        if download_state:
+            saved_state = download_state(job_id)
+            if saved_state:
+                self.state["title"] = saved_state.get("title", "Resumed from Cloud")
+                self.state["topic"] = saved_state.get("topic", "")
+                self.state["script"] = saved_state.get("script", "")
+                await self.send_message(f"📋 Restored state: {self.state.get('title', 'Unknown')}")
+        
+        if not self.state.get("script"):
+            await self.send_message("❌ No script found. Cannot generate audio without script.")
+            await self.start()
+            return
+        
+        # Download all images to local
+        self.supabase_job_id = job_id
+        images_dir = os.path.join(self.output_dir, "images")
+        os.makedirs(images_dir, exist_ok=True)
+        
+        image_chunks = []
+        for i, img_storage_path in enumerate(assets["images"]):
+            local_img_path = os.path.join(images_dir, f"chunk_{i:03d}.png")
+            if download_file and download_file(img_storage_path, local_img_path):
+                image_chunks.append({
+                    "success": True,
+                    "path": local_img_path,
+                    "index": i,
+                    "chunk_text": ""  # Will be filled from script chunks
+                })
+        
+        if not image_chunks:
+            await self.send_message("❌ Failed to download images from cloud storage.")
+            await self.start()
+            return
+        
+        await self.send_message(f"✅ Downloaded {len(image_chunks)} images. Proceeding to video generation...")
+        
+        # Store images in state and proceed to video generation
+        self.state["images"] = {"chunks": image_chunks}
+        await self._generate_video()
+    
+    
     async def start(self):
         """Start the pipeline - ask to scan trends."""
         self.state["step"] = "ask_opportunity"
@@ -268,9 +374,33 @@ class NewVideoPipeline:
             ("Evergreen Topic", "newvideo_evergreen")
         ]
         
-        # Add Resume button if saved state exists
+        # Add Resume button if saved state exists in Redis
         if self.has_saved_state(self.chat_id):
             options.insert(0, ("📂 Resume Previous Session", "newvideo_resume_start"))
+        
+        # Add Resume from Cloud option if Supabase has assets
+        if STORAGE_AVAILABLE and get_latest_job_with_assets:
+            try:
+                job_id, assets = get_latest_job_with_assets()
+                if job_id:
+                    # Determine best resume point based on what exists
+                    if assets.get('subtitled_video'):
+                        resume_label = "☁️ Resume from Subtitled Video"
+                        resume_action = "newvideo_resume_cloud_subtitled"
+                    elif assets.get('images'):
+                        resume_label = f"☁️ Resume from Images ({len(assets['images'])} images)"
+                        resume_action = "newvideo_resume_cloud_images"
+                    else:
+                        resume_label = None
+                        resume_action = None
+                    
+                    if resume_label:
+                        # Store job info for later use
+                        self.state["cloud_job_id"] = job_id
+                        self.state["cloud_assets"] = assets
+                        options.insert(1, (resume_label, resume_action))
+            except Exception as e:
+                print(f"Error checking Supabase assets: {e}")
             
         await self.send_keyboard(
             "🎬 **New Video Pipeline**\n\nShould I scan for trending opportunities?",
@@ -332,6 +462,15 @@ class NewVideoPipeline:
         elif callback_data.startswith("newvideo_resume_"):
             # Resume from saved step - continue to next action
             step = callback_data.replace("newvideo_resume_", "")
+            
+            # Handle cloud resume options
+            if step == "cloud_subtitled":
+                await self._resume_from_cloud_subtitled()
+                return True
+            elif step == "cloud_images":
+                await self._resume_from_cloud_images()
+                return True
+            
             await self.send_message(f"▶️ Resuming from step: {step}")
             # Trigger appropriate next action based on step
             if step == "approving_title":
@@ -955,9 +1094,20 @@ class NewVideoPipeline:
         
         await self.send_message(f"✅ Audio generated for {len(video_chunks)} chunks.\n\n🎬 Now assembling video...")
         
-        # Build video from chunks
+        # Progress tracking for video assembly
+        progress_messages = []
+        
+        def video_progress_callback(current, total, message):
+            """Callback for video assembly progress - stores messages for later sending"""
+            progress_messages.append(message)
+            print(message)  # Also log to console
+        
+        # Build video from chunks with progress tracking
         try:
-            video_result = build_video_from_chunks(video_chunks)
+            video_result = build_video_from_chunks(video_chunks, progress_callback=video_progress_callback)
+            
+            # Send buffered progress messages (can't await from sync callback)
+            # Progress is logged to Railway console instead
             
             if not video_result.get("success"):
                 await self.send_message(f"❌ Video assembly failed: {video_result.get('message')}")
@@ -967,6 +1117,10 @@ class NewVideoPipeline:
             duration = video_result.get("duration", 0)
             
             self.state["video_path"] = video_path
+            
+            # Note: We don't upload the pre-subtitle video to save storage
+            # Only the final subtitled video gets uploaded to Supabase
+            
             
             # Send video file to Telegram for preview
             try:
@@ -1000,27 +1154,82 @@ class NewVideoPipeline:
         """Add subtitles to video."""
         await self.send_message("📝 Adding subtitles...")
         
-        result = generate_subtitled_video(
-            video_path=self.state["video_path"],
-            audio_path=self.state["audio_path"]
-        )
+        video_path = self.state.get("video_path")
+        if not video_path:
+            await self.send_message("❌ Video path not found in state. Cannot add subtitles.")
+            return
         
-        self.state["subtitled_video_path"] = result.get("subtitled_video")
-        self.state["srt_path"] = result.get("srt_path")
-        
-        # TODO: Send video file to Telegram for preview
-        # For now just show path
-        await self.send_keyboard(
-            f"✅ **Subtitled Video Generated**\n\n"
-            f"Path: `{self.state['subtitled_video_path']}`\n\n"
-            f"Approve subtitles or regenerate?",
-            [
-                ("✅ Approve Subtitles", "newvideo_subtitles_approve"),
-                ("🔄 Regenerate", "newvideo_subtitles_regen"),
-            ]
-        )
-        self.state["step"] = "approving_subtitles"
-        self.save_state()  # Save for resume
+        try:
+            result = generate_subtitled_video(
+                video_path=video_path,
+                audio_path=None  # Let it extract audio from video
+            )
+            
+            if not result.get("success"):
+                await self.send_message(f"❌ Subtitle generation failed: {result.get('error', 'Unknown error')}")
+                return
+            
+            self.state["subtitled_video_path"] = result.get("subtitled_video")
+            self.state["srt_path"] = result.get("srt_path")
+            
+            subtitled_path = self.state.get("subtitled_video_path", "None")
+            srt_path = self.state.get("srt_path")
+            
+            # Upload subtitled video and SRT to Supabase for persistence
+            if STORAGE_AVAILABLE:
+                try:
+                    if subtitled_path and os.path.exists(subtitled_path):
+                        subtitled_url = upload_file(
+                            local_path=subtitled_path,
+                            job_id=self.supabase_job_id,
+                            step_name="video",
+                            filename="video_subtitled.mp4"
+                        )
+                        if subtitled_url:
+                            self.state["subtitled_video_url"] = subtitled_url
+                    
+                    if srt_path and os.path.exists(srt_path):
+                        srt_url = upload_file(
+                            local_path=srt_path,
+                            job_id=self.supabase_job_id,
+                            step_name="video",
+                            filename="video.srt"
+                        )
+                        if srt_url:
+                            self.state["srt_url"] = srt_url
+                    
+                    # Also upload state for recovery
+                    upload_state(self.supabase_job_id, self.state)
+                    await self.send_message(f"☁️ Subtitled video uploaded to cloud storage")
+                except Exception as e:
+                    print(f"Failed to upload subtitled video to Supabase: {e}")
+            
+            # Try to send video preview
+            if subtitled_path and os.path.exists(subtitled_path):
+                try:
+                    with open(subtitled_path, 'rb') as video_file:
+                        await self.bot.send_video(
+                            chat_id=self.chat_id,
+                            video=video_file,
+                            caption="📝 Subtitled video preview"
+                        )
+                except Exception as e:
+                    print(f"Failed to send subtitled video preview: {e}")
+            
+            await self.send_keyboard(
+                f"✅ **Subtitled Video Generated**\n\n"
+                f"Path: `{subtitled_path}`\n\n"
+                f"Approve subtitles or regenerate?",
+                [
+                    ("✅ Approve Subtitles", "newvideo_subtitles_approve"),
+                    ("🔄 Regenerate", "newvideo_subtitles_regen"),
+                ]
+            )
+            self.state["step"] = "approving_subtitles"
+            self.save_state()  # Save for resume
+        except Exception as e:
+            await self.send_message(f"❌ Subtitle error: {str(e)}")
+            print(f"Subtitle exception: {e}")
     
     async def _regenerate_video(self):
         """Regenerate video from images and audio."""
@@ -1042,10 +1251,18 @@ class NewVideoPipeline:
             self.state["timestamps"] = timestamps
         
         # Generate full metadata (tags, description with timestamps)
+        # Get reference metadata from state (set during research phase)
+        original_title = self.state.get("reference_title", self.state.get("title", ""))
+        original_description = self.state.get("reference_description", "")
+        original_tags = self.state.get("reference_tags", [])
+        
         metadata = generate_full_metadata(
-            script=self.state["script"],
-            title=self.state["title"],
-            timestamps=self.state.get("timestamps")
+            original_title=original_title,
+            original_description=original_description,
+            original_tags=original_tags,
+            topic=self.state.get("topic", self.state.get("title", "")),
+            script_text=self.state.get("script", ""),
+            timestamps_text=self.state.get("timestamps", "")
         )
         self.state["description"] = metadata.get("description")
         self.state["tags"] = metadata.get("tags", [])
