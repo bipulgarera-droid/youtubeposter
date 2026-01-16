@@ -79,6 +79,15 @@ try:
 except ImportError:
     generate_timestamps_from_srt = None
 
+# Supabase storage for persisting outputs
+try:
+    from execution.storage_helper import upload_file, upload_text
+    STORAGE_AVAILABLE = True
+except ImportError:
+    STORAGE_AVAILABLE = False
+    upload_file = None
+    upload_text = None
+
 
 class NewVideoPipeline:
     """
@@ -741,6 +750,23 @@ class NewVideoPipeline:
             except Exception as e:
                 print(f"Failed to send script file: {e}")
             
+            # Upload script to Supabase storage
+            if STORAGE_AVAILABLE and upload_file:
+                job_id = f"video_{self.chat_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                try:
+                    script_url = upload_file(
+                        local_path=script_path,
+                        job_id=job_id,
+                        step_name='scripts',
+                        filename=f"script.txt"
+                    )
+                    if script_url:
+                        self.state['script_url'] = script_url
+                        self.state['supabase_job_id'] = job_id
+                        print(f"✅ Script uploaded to Supabase: {script_url}")
+                except Exception as e:
+                    print(f"Failed to upload script to Supabase: {e}")
+            
             await self.send_keyboard(
                 f"📜 **Script Generated**\n\n"
                 f"**Word Count:** {word_count}\n"
@@ -821,6 +847,29 @@ class NewVideoPipeline:
                         sent_previews += 1
                 except Exception as e:
                     print(f"Failed to send preview image: {e}")
+        
+        # Upload images to Supabase storage for persistence
+        if STORAGE_AVAILABLE and upload_file:
+            job_id = f"video_{self.chat_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            uploaded_urls = []
+            for chunk_result in chunks_data:
+                if chunk_result.get('success') and chunk_result.get('path'):
+                    try:
+                        url = upload_file(
+                            local_path=chunk_result['path'],
+                            job_id=job_id,
+                            step_name='images',
+                            filename=f"chunk_{chunk_result.get('index', 0):03d}.png"
+                        )
+                        if url:
+                            uploaded_urls.append(url)
+                            chunk_result['supabase_url'] = url
+                    except Exception as e:
+                        print(f"Failed to upload image to Supabase: {e}")
+            
+            if uploaded_urls:
+                print(f"✅ Uploaded {len(uploaded_urls)} images to Supabase")
+                self.state['supabase_job_id'] = job_id
         
         status_msg = f"🖼️ **Image Generation Complete**\n\n"
         status_msg += f"✅ Generated: {successful}/{total_chunks} images\n"
