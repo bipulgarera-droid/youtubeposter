@@ -35,6 +35,13 @@ from execution.job_queue import (
     get_redis_connection
 )
 
+# Import new pipeline
+from execution.new_video_pipeline import (
+    get_pipeline,
+    create_pipeline,
+    remove_pipeline
+)
+
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -46,7 +53,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 # Conversation states
-CHOOSING_MODE, WAITING_URL, CHOOSING_LENGTH, WAITING_SEARCH_KEYWORD, CHOOSING_NEWS_ARTICLE, CHOOSING_JOB_TO_CANCEL, CHOOSING_PIPELINE_MODE = range(7)
+CHOOSING_MODE, WAITING_URL, CHOOSING_LENGTH, WAITING_SEARCH_KEYWORD, CHOOSING_NEWS_ARTICLE, CHOOSING_JOB_TO_CANCEL, CHOOSING_PIPELINE_MODE, NEWVIDEO_FLOW = range(8)
 
 # Length options
 LENGTH_OPTIONS = [
@@ -61,6 +68,8 @@ LENGTH_OPTIONS = [
 def get_main_menu_keyboard():
     """Main menu keyboard."""
     keyboard = [
+        [InlineKeyboardButton("🎬 NEW VIDEO (Research-First)", callback_data="mode_newvideo")],
+        [InlineKeyboardButton("─────── Legacy Options ───────", callback_data="noop")],
         [InlineKeyboardButton("📺 Reference Video (YouTube URL)", callback_data="mode_video")],
         [InlineKeyboardButton("📰 News Article", callback_data="mode_news")],
         [InlineKeyboardButton("🔍 Search News First", callback_data="mode_search")],
@@ -169,6 +178,25 @@ async def mode_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             parse_mode='Markdown'
         )
         return WAITING_SEARCH_KEYWORD
+    
+    elif mode == "newvideo":
+        # Start new research-first pipeline
+        chat_id = update.effective_chat.id
+        
+        async def send_message(text):
+            await context.bot.send_message(chat_id, text, parse_mode='Markdown')
+        
+        async def send_keyboard(text, options):
+            keyboard = [[InlineKeyboardButton(label, callback_data=cb)] for label, cb in options]
+            await context.bot.send_message(
+                chat_id, text, parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        
+        pipeline = create_pipeline(chat_id, send_message, send_keyboard)
+        context.user_data['pipeline'] = pipeline
+        await pipeline.start()
+        return NEWVIDEO_FLOW
 
 
 async def receive_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -565,12 +593,65 @@ async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Digest error: {e}")
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
-
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancel current conversation."""
     context.user_data.clear()
     await update.message.reply_text("Cancelled. Use /start to begin again.")
     return ConversationHandler.END
+
+
+async def handle_newvideo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle callbacks from new video pipeline."""
+    query = update.callback_query
+    await query.answer()
+    
+    pipeline = context.user_data.get('pipeline')
+    if not pipeline:
+        await query.edit_message_text("❌ Session expired. Use /start to begin again.")
+        return ConversationHandler.END
+    
+    callback_data = query.data
+    
+    # Handle the callback
+    try:
+        should_continue = await pipeline.handle_callback(callback_data)
+        if should_continue:
+            return NEWVIDEO_FLOW
+        else:
+            # Pipeline complete
+            remove_pipeline(update.effective_chat.id)
+            context.user_data.clear()
+            return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Pipeline error: {e}")
+        await context.bot.send_message(
+            update.effective_chat.id,
+            f"❌ Error: {str(e)}\n\nUse /start to begin again."
+        )
+        return ConversationHandler.END
+
+
+async def handle_newvideo_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle text input during new video pipeline."""
+    pipeline = context.user_data.get('pipeline')
+    if not pipeline:
+        await update.message.reply_text("❌ Session expired. Use /start to begin again.")
+        return ConversationHandler.END
+    
+    user_input = update.message.text
+    
+    try:
+        should_continue = await pipeline.handle_callback(None, user_input=user_input)
+        if should_continue:
+            return NEWVIDEO_FLOW
+        else:
+            remove_pipeline(update.effective_chat.id)
+            context.user_data.clear()
+            return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Pipeline error: {e}")
+        await update.message.reply_text(f"❌ Error: {str(e)}\n\nUse /start to begin again.")
+        return ConversationHandler.END
 
 
 def main():
@@ -610,6 +691,10 @@ def main():
             ],
             CHOOSING_JOB_TO_CANCEL: [
                 CallbackQueryHandler(confirm_cancel, pattern="^cancel_"),
+            ],
+            NEWVIDEO_FLOW: [
+                CallbackQueryHandler(handle_newvideo_callback, pattern="^newvideo_"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_newvideo_text),
             ],
         },
         fallbacks=[
