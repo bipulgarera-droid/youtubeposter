@@ -32,6 +32,7 @@ from execution.trend_scanner import scan_trending_topics, get_evergreen_topics
 from execution.research_agent import deep_research, format_research_for_script
 from execution.style_selector import get_style_options, apply_style_to_prompt, DEFAULT_STYLE
 from execution.file_renamer import rename_output_files, generate_topic_slug, extract_topic_from_title
+from execution.generate_outline import generate_outline, format_outline_for_telegram, format_outline_for_script
 
 # Import existing generators (with try/except for missing modules)
 try:
@@ -100,6 +101,7 @@ class NewVideoPipeline:
             "topic": None,
             "title": None,
             "research": None,
+            "outline": None,
             "script": None,
             "style": DEFAULT_STYLE,
             "images": [],
@@ -194,12 +196,21 @@ class NewVideoPipeline:
             await self._regenerate_title()
             return True
         
-        # Step 4: Research approval
+        # Step 4: Research approval → Generate Outline
         elif callback_data == "newvideo_research_approve":
+            await self._generate_outline()
+            return True
+        
+        # Step 5: Outline approval → Generate Script
+        elif callback_data == "newvideo_outline_approve":
             await self._generate_script()
             return True
         
-        # Step 5: Script approval
+        elif callback_data == "newvideo_outline_regen":
+            await self._regenerate_outline()
+            return True
+        
+        # Step 6: Script approval
         elif callback_data == "newvideo_script_approve":
             await self._select_style()
             return True
@@ -427,17 +438,55 @@ class NewVideoPipeline:
         )
         self.state["research"] = research
         
-        # Format summary for user
-        summary = research.get("summary", "Research complete.")
+        # Format summary for user (now using raw_facts)
+        summary = research.get("raw_facts", research.get("summary", "Research complete."))
+        
+        # Truncate for display
+        display_summary = summary[:1500] if len(summary) > 1500 else summary
         
         await self.send_keyboard(
-            f"📚 **Research Summary:**\n\n{summary[:1500]}...\n\nProceed to script generation?",
+            f"📚 **Research Facts:**\n\n{display_summary}...\n\nProceed to outline generation?",
             [
                 ("✅ Approve Research", "newvideo_research_approve"),
                 ("❌ Cancel", "newvideo_cancel")
             ]
         )
         self.state["step"] = "approving_research"
+    
+    async def _generate_outline(self):
+        """Generate 7-chapter outline from research."""
+        await self.send_message("📋 Generating outline (7 chapters)...")
+        self.state["step"] = "generating_outline"
+        
+        result = generate_outline(
+            title=self.state["title"],
+            research=self.state["research"],
+            country=self.state.get("country")
+        )
+        
+        if not result.get("success"):
+            await self.send_message(f"❌ Outline generation failed: {result.get('error', 'Unknown')}")
+            return
+        
+        self.state["outline"] = result.get("outline", "")
+        
+        # Show outline for approval
+        outline_text = format_outline_for_telegram(result)
+        
+        await self.send_keyboard(
+            outline_text,
+            [
+                ("✅ Approve Outline", "newvideo_outline_approve"),
+                ("🔄 Regenerate", "newvideo_outline_regen"),
+                ("❌ Cancel", "newvideo_cancel")
+            ]
+        )
+        self.state["step"] = "approving_outline"
+    
+    async def _regenerate_outline(self):
+        """Regenerate the outline with fresh approach."""
+        await self.send_message("🔄 Regenerating outline...")
+        await self._generate_outline()
     
     async def _generate_script(self):
         """Generate the video script."""
@@ -446,12 +495,19 @@ class NewVideoPipeline:
         
         research_text = format_research_for_script(self.state["research"])
         
+        # Include approved outline in the context
+        outline_text = ""
+        if self.state.get("outline"):
+            outline_text = f"\n\n### APPROVED OUTLINE (follow this structure EXACTLY):\n{self.state['outline']}"
+        
+        full_context = research_text + outline_text
+        
         # Generate script using style guide
         script_path = os.path.join(self.output_dir, "script.txt")
         script = generate_script(
             topic=self.state["topic"],
             title=self.state["title"],
-            research=research_text,
+            research=full_context,
             output_path=script_path,
             target_words=4500
         )
