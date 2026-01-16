@@ -86,7 +86,7 @@ class NewVideoPipeline:
     Each step waits for user approval via Telegram.
     """
     
-    def __init__(self, chat_id: int, send_message_func, send_keyboard_func, test_mode: bool = False):
+    def __init__(self, chat_id: int, send_message_func, send_keyboard_func, bot=None, test_mode: bool = False):
         """
         Initialize pipeline.
         
@@ -94,11 +94,13 @@ class NewVideoPipeline:
             chat_id: Telegram chat ID
             send_message_func: Async function to send messages
             send_keyboard_func: Async function to send keyboard options
+            bot: Telegram bot instance for sending documents/photos
             test_mode: If True, generate shorter content for faster testing
         """
         self.chat_id = chat_id
         self.send_message = send_message_func
         self.send_keyboard = send_keyboard_func
+        self.bot = bot  # For sending documents, photos, videos
         self.test_mode = test_mode
         
         # Redis key for persistence
@@ -730,7 +732,7 @@ class NewVideoPipeline:
             # Send script as downloadable file
             try:
                 with open(script_path, 'rb') as script_file:
-                    await self.context.bot.send_document(
+                    await self.bot.send_document(
                         chat_id=self.chat_id,
                         document=script_file,
                         filename=f"script_{self.state['title'][:30].replace(' ', '_')}.txt",
@@ -811,7 +813,7 @@ class NewVideoPipeline:
             if chunk_result.get('success') and chunk_result.get('path'):
                 try:
                     with open(chunk_result['path'], 'rb') as img_file:
-                        await self.context.bot.send_photo(
+                        await self.bot.send_photo(
                             chat_id=self.chat_id,
                             photo=img_file,
                             caption=f"Image {chunk_result.get('index', 0)+1}/{total_chunks}"
@@ -920,7 +922,7 @@ class NewVideoPipeline:
             # Send video file to Telegram for preview
             try:
                 with open(video_path, 'rb') as video_file:
-                    await self.context.bot.send_video(
+                    await self.bot.send_video(
                         chat_id=self.chat_id,
                         video=video_file,
                         caption=f"🎬 Video preview ({duration/60:.1f} min)"
@@ -1112,9 +1114,9 @@ def get_pipeline(chat_id: int) -> Optional[NewVideoPipeline]:
     return _pipeline_instances.get(chat_id)
 
 
-def create_pipeline(chat_id: int, send_message_func, send_keyboard_func, test_mode: bool = False) -> NewVideoPipeline:
+def create_pipeline(chat_id: int, send_message_func, send_keyboard_func, bot=None, test_mode: bool = False) -> NewVideoPipeline:
     """Create new pipeline instance."""
-    pipeline = NewVideoPipeline(chat_id, send_message_func, send_keyboard_func, test_mode=test_mode)
+    pipeline = NewVideoPipeline(chat_id, send_message_func, send_keyboard_func, bot=bot, test_mode=test_mode)
     _pipeline_instances[chat_id] = pipeline
     return pipeline
 

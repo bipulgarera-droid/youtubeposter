@@ -174,7 +174,7 @@ async def newvideo_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
     
-    pipeline = create_pipeline(chat_id, send_message, send_keyboard)
+    pipeline = create_pipeline(chat_id, send_message, send_keyboard, bot=context.bot)
     context.user_data['pipeline'] = pipeline
     await pipeline.start()
     return NEWVIDEO_FLOW
@@ -236,7 +236,7 @@ async def mode_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
         
-        pipeline = create_pipeline(chat_id, send_message, send_keyboard)
+        pipeline = create_pipeline(chat_id, send_message, send_keyboard, bot=context.bot)
         context.user_data['pipeline'] = pipeline
         await pipeline.start()
         return NEWVIDEO_FLOW
