@@ -7,8 +7,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import google.generativeai as genai
-from google.genai import types
+# Try new SDK first, fallback to old SDK
+try:
+    from google import genai
+    # types imported above
+    NEW_SDK = True
+except ImportError:
+    import google.generativeai as genai
+    types = None
+    NEW_SDK = False
 from PIL import Image
 
 # Initialize client (uses GOOGLE_API_KEY or GEMINI_API_KEY from env)

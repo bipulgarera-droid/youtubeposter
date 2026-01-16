@@ -7,10 +7,20 @@ Ensures consistent 16:9 YouTube dimensions via post-processing.
 import os
 import io
 import re
+import base64
 from pathlib import Path
 from dotenv import load_dotenv
-import google.generativeai as genai
-from google.genai import types
+
+# Try new SDK first, fallback to old SDK
+try:
+    from google import genai
+    from google.genai import types
+    NEW_SDK = True
+except ImportError:
+    import google.generativeai as genai
+    types = None
+    NEW_SDK = False
+
 from PIL import Image
 
 load_dotenv()
@@ -22,9 +32,14 @@ YOUTUBE_ASPECT = YOUTUBE_WIDTH / YOUTUBE_HEIGHT  # 16:9 = 1.777...
 
 api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
 if not api_key:
-    raise ValueError("No API key found. Set GEMINI_API_KEY in .env")
+    print("⚠️ No GEMINI_API_KEY found. Image generation will fail.")
 
-client = genai.Client(api_key=api_key)
+if NEW_SDK and api_key:
+    client = genai.Client(api_key=api_key)
+else:
+    if api_key:
+        genai.configure(api_key=api_key)
+    client = None
 
 
 def crop_to_youtube(image: Image.Image) -> Image.Image:
