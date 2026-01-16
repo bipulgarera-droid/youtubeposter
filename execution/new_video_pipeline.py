@@ -134,7 +134,7 @@ class NewVideoPipeline:
     def save_state(self):
         """Save current state to Redis for resume capability."""
         try:
-            # Don't save large data like full research/script to state
+            # Save content for persistence (essential for Railway ephemeral usage)
             save_data = {
                 "step": self.state["step"],
                 "topic": self.state["topic"],
@@ -143,7 +143,14 @@ class NewVideoPipeline:
                 "output_dir": self.state["output_dir"],
                 "test_mode": self.state.get("test_mode", False),
                 "timestamp": datetime.now().isoformat(),
-                # Save paths only, not content
+                
+                # Save full CONTENT because local files are ephemeral
+                "script": self.state.get("script"),
+                "research": self.state.get("research"),
+                "outline": self.state.get("outline"),
+                "description": self.state.get("description"),
+                
+                # Save paths
                 "script_path": self.state.get("script_path"),
                 "video_path": self.state.get("video_path"),
                 "srt_path": self.state.get("srt_path"),
@@ -204,12 +211,23 @@ class NewVideoPipeline:
         self.state["output_dir"] = saved.get("output_dir", self.output_dir)
         self.test_mode = saved.get("test_mode", False)
         
+        # Restore CONTENT (prioritize saved state)
+        if saved.get("script"):
+            self.state["script"] = saved["script"]
+        elif saved.get("script_path") and os.path.exists(saved["script_path"]):
+            # Fallback to file (backward compatibility)
+            with open(saved["script_path"], "r") as f:
+                self.state["script"] = f.read()
+
+        if saved.get("research"):
+            self.state["research"] = saved["research"]
+        if saved.get("outline"):
+            self.state["outline"] = saved["outline"]
+        if saved.get("description"):
+            self.state["description"] = saved["description"]
+            
         # Restore paths
-        if saved.get("script_path"):
-            self.state["script_path"] = saved["script_path"]
-            if os.path.exists(saved["script_path"]):
-                with open(saved["script_path"], "r") as f:
-                    self.state["script"] = f.read()
+        self.state["script_path"] = saved.get("script_path")
         
         timestamp = saved.get("timestamp", "unknown")
         step = self.state["step"]
@@ -752,6 +770,11 @@ class NewVideoPipeline:
         self.state["style"] = style_id
         await self.send_message(f"🎨 Style selected: {style_id}\n\n⏳ Generating images...")
         
+        # Validate script exists
+        if not self.state.get("script"):
+            await self.send_message("❌ Error: Narrative script is missing. The saved session may be incomplete. Please use /start to restart.")
+            return
+
         # Generate images
         if not generate_images_for_script:
             await self.send_message("❌ Image generator module not loaded. Check server logs.")
