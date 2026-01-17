@@ -1405,21 +1405,34 @@ class NewVideoPipeline:
         """Prepare files for upload and show final confirmation."""
         await self.send_message("📦 Preparing files for upload...")
         
+        # Get video path - prefer subtitled, fallback to regular
+        video_path = self.state.get("subtitled_video_path") or self.state.get("video_path")
+        thumbnail_path = self.state.get("thumbnail_path")
+        
+        # Validate paths exist
+        if not video_path or not os.path.exists(video_path):
+            await self.send_message(f"❌ Video file not found: {video_path}")
+            return
+        
         # Rename files - use raw topic or extract from title
         topic_for_naming = self.state.get("topic") or self.state.get("raw_topic") or extract_topic_from_title(self.state["title"])
         new_video, new_thumb = rename_output_files(
-            self.state.get("subtitled_video_path") or self.state.get("video_path"),
-            self.state.get("thumbnail_path"),
+            video_path,
+            thumbnail_path,
             topic_for_naming
         )
         self.state["final_video_path"] = new_video
         self.state["final_thumbnail_path"] = new_thumb
         
+        # Get display names (handle None gracefully)
+        video_name = os.path.basename(new_video) if new_video else "No video"
+        thumb_name = os.path.basename(new_thumb) if new_thumb else "No thumbnail"
+        
         await self.send_keyboard(
             f"🚀 **Ready to Upload**\n\n"
             f"**Title:** {self.state['title']}\n"
-            f"**Video:** `{os.path.basename(new_video)}`\n"
-            f"**Thumbnail:** `{os.path.basename(new_thumb)}`\n\n"
+            f"**Video:** `{video_name}`\n"
+            f"**Thumbnail:** `{thumb_name}`\n\n"
             f"Upload to YouTube?",
             [
                 ("🚀 Upload Now", "newvideo_upload_confirm"),
