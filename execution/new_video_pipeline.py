@@ -1370,7 +1370,7 @@ class NewVideoPipeline:
                 print(f"Failed to send thumbnail preview: {e}")
         
         await self.send_keyboard(
-            f"🖼️ **Thumbnail Generated**\\n\\n"
+            f"🖼️ **Thumbnail Generated**\n\n"
             f"Approve thumbnail?",
             [
                 ("✅ Approve Thumbnail", "newvideo_thumbnail_approve"),
