@@ -886,9 +886,9 @@ class NewVideoPipeline:
             # Check for test mode - topic starting with "TEST:" uses short script
             topic = self.state["title"]
             if self.state.get("test_mode") or (self.state.get("raw_topic", "").upper().startswith("TEST")):
-                target_mins = 3  # ~450 words for testing
+                target_mins = 1  # ~150 words / ~6 images for quick testing
                 self.state["test_mode"] = True
-                await self.send_message("🧪 **TEST MODE**: Generating short ~450 word script")
+                await self.send_message("🧪 **TEST MODE**: Generating ultra-short ~150 word script (~6 images)")
             else:
                 target_mins = 30  # 4500 words (150 words/min × 30 min)
             
