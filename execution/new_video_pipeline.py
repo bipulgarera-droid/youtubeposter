@@ -883,11 +883,20 @@ class NewVideoPipeline:
         full_context = research_text + outline_text
         
         try:
+            # Check for test mode - topic starting with "TEST:" uses short script
+            topic = self.state["title"]
+            if self.state.get("test_mode") or (self.state.get("raw_topic", "").upper().startswith("TEST")):
+                target_mins = 3  # ~450 words for testing
+                self.state["test_mode"] = True
+                await self.send_message("🧪 **TEST MODE**: Generating short ~450 word script")
+            else:
+                target_mins = 30  # 4500 words (150 words/min × 30 min)
+            
             # Generate script using narrative engine (accepts research_data: str)
             result = generate_narrative_script(
                 research_data=full_context,
-                topic=self.state["title"],  # Use title as topic
-                target_minutes=30  # 4500 words (150 words/min × 30 min)
+                topic=topic,
+                target_minutes=target_mins
             )
             
             if not result or not result.get("full_script"):
