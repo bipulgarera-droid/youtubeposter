@@ -7,6 +7,7 @@ Handles OAuth 2.0 authentication and video upload to YouTube.
 import os
 import json
 import pickle
+import base64
 import tempfile
 from pathlib import Path
 from typing import Dict, Optional, List
@@ -22,10 +23,21 @@ except ImportError:
     GOOGLE_API_AVAILABLE = False
     print("⚠️ Google API libraries not installed. Run: pip install google-auth-oauthlib google-api-python-client")
 
+# Redis for persistent token storage (Railway ephemeral filesystem)
+try:
+    from redis import Redis
+    REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
+    redis_client = Redis.from_url(REDIS_URL)
+    REDIS_AVAILABLE = True
+except Exception:
+    REDIS_AVAILABLE = False
+    redis_client = None
+
 # Paths
 BASE_DIR = Path(__file__).parent.parent
 CLIENT_SECRETS_FILE = BASE_DIR / 'client_secrets.json'
 TOKEN_FILE = BASE_DIR / 'youtube_token.pickle'
+REDIS_TOKEN_KEY = 'youtube_oauth_credentials'
 
 # OAuth scopes for YouTube upload
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
@@ -137,9 +149,22 @@ def handle_oauth_callback(authorization_response: str) -> Dict:
         flow.fetch_token(authorization_response=authorization_response)
         credentials = flow.credentials
         
-        # Save credentials for future use
-        with open(TOKEN_FILE, 'wb') as token:
-            pickle.dump(credentials, token)
+        # Save credentials to pickle file (local)
+        try:
+            with open(TOKEN_FILE, 'wb') as token:
+                pickle.dump(credentials, token)
+        except Exception as e:
+            print(f"Warning: Could not save to pickle file: {e}")
+        
+        # Also save to Redis for persistence on Railway
+        if REDIS_AVAILABLE and redis_client:
+            try:
+                creds_data = pickle.dumps(credentials)
+                creds_b64 = base64.b64encode(creds_data).decode('utf-8')
+                redis_client.set(REDIS_TOKEN_KEY, creds_b64)
+                print("✅ YouTube credentials saved to Redis")
+            except Exception as e:
+                print(f"Warning: Could not save to Redis: {e}")
         
         return {'success': True, 'message': 'YouTube authorization successful!'}
     except Exception as e:
@@ -147,19 +172,36 @@ def handle_oauth_callback(authorization_response: str) -> Dict:
 
 
 def get_credentials() -> Optional[Credentials]:
-    """Load saved credentials if they exist."""
-    if not TOKEN_FILE.exists():
-        return None
+    """Load saved credentials from Redis (priority) or pickle file."""
+    credentials = None
     
-    try:
-        with open(TOKEN_FILE, 'rb') as token:
-            credentials = pickle.load(token)
-            if credentials and credentials.valid:
+    # First try Redis (for Railway persistence)
+    if REDIS_AVAILABLE and redis_client:
+        try:
+            creds_b64 = redis_client.get(REDIS_TOKEN_KEY)
+            if creds_b64:
+                creds_data = base64.b64decode(creds_b64)
+                credentials = pickle.loads(creds_data)
+                if credentials and credentials.valid:
+                    return credentials
+                # Return even if expired - might be refreshable
+                if credentials:
+                    return credentials
+        except Exception as e:
+            print(f"Warning: Could not load from Redis: {e}")
+    
+    # Fallback to pickle file
+    if TOKEN_FILE.exists():
+        try:
+            with open(TOKEN_FILE, 'rb') as token:
+                credentials = pickle.load(token)
+                if credentials and credentials.valid:
+                    return credentials
                 return credentials
-            # Could add refresh logic here
-            return credentials
-    except:
-        return None
+        except Exception:
+            pass
+    
+    return None
 
 
 def is_authenticated() -> bool:
