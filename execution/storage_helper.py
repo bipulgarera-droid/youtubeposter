@@ -270,9 +270,23 @@ def get_job_assets(job_id: str) -> dict:
             name = item['name']
             
             if name == 'images':
-                # List images folder
-                images = client.storage.from_(BUCKET_NAME).list(f"{job_id}/images")
-                assets['images'] = [f"{job_id}/images/{img['name']}" for img in images if img['name'].endswith('.png')]
+                # List images folder - paginate to get all (Supabase default is 100)
+                all_images = []
+                offset = 0
+                limit = 1000  # Max per request
+                while True:
+                    images = client.storage.from_(BUCKET_NAME).list(
+                        f"{job_id}/images",
+                        {"limit": limit, "offset": offset}
+                    )
+                    if not images:
+                        break
+                    all_images.extend(images)
+                    if len(images) < limit:
+                        break
+                    offset += limit
+                
+                assets['images'] = [f"{job_id}/images/{img['name']}" for img in all_images if img['name'].endswith('.png')]
                 assets['images'].sort()
             elif name == 'script':
                 scripts = client.storage.from_(BUCKET_NAME).list(f"{job_id}/script")
