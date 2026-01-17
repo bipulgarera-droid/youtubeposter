@@ -353,6 +353,15 @@ class NewVideoPipeline:
             await self.start()
             return
         
+        # Split script into chunks to match images
+        try:
+            from execution.generate_ai_images import split_script_to_chunks
+            script_chunks = split_script_to_chunks(self.state["script"])
+            await self.send_message(f"📝 Script split into {len(script_chunks)} chunks")
+        except Exception as e:
+            print(f"Failed to split script: {e}")
+            script_chunks = []
+        
         # Download all images to local
         self.supabase_job_id = job_id
         images_dir = os.path.join(self.output_dir, "images")
@@ -362,11 +371,13 @@ class NewVideoPipeline:
         for i, img_storage_path in enumerate(assets["images"]):
             local_img_path = os.path.join(images_dir, f"chunk_{i:03d}.png")
             if download_file and download_file(img_storage_path, local_img_path):
+                # Get chunk text from script - use index to match
+                chunk_text = script_chunks[i] if i < len(script_chunks) else ""
                 image_chunks.append({
                     "success": True,
                     "path": local_img_path,
                     "index": i,
-                    "chunk_text": ""  # Will be filled from script chunks
+                    "chunk_text": chunk_text
                 })
         
         if not image_chunks:
@@ -374,7 +385,9 @@ class NewVideoPipeline:
             await self.start()
             return
         
-        await self.send_message(f"✅ Downloaded {len(image_chunks)} images. Proceeding to video generation...")
+        # Count how many have text
+        chunks_with_text = sum(1 for c in image_chunks if c.get("chunk_text"))
+        await self.send_message(f"✅ Downloaded {len(image_chunks)} images. {chunks_with_text} have text for audio. Proceeding to video generation...")
         
         # Store images in state and proceed to video generation
         self.state["images"] = {"chunks": image_chunks}
