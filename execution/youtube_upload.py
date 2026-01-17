@@ -134,6 +134,8 @@ def handle_oauth_callback(authorization_response: str) -> Dict:
     """
     Handle the OAuth callback and save credentials.
     """
+    logger.info("YouTube Auth: handle_oauth_callback called")
+    
     if not GOOGLE_API_AVAILABLE:
         return {'success': False, 'error': 'Google API libraries not installed'}
     
@@ -142,6 +144,7 @@ def handle_oauth_callback(authorization_response: str) -> Dict:
         return {'success': False, 'error': 'client_secrets.json not found and GOOGLE_CLIENT_SECRETS env var not set'}
     
     redirect_uri = _get_redirect_uri()
+    logger.info(f"YouTube Auth: Using redirect_uri: {redirect_uri}")
     
     try:
         flow = Flow.from_client_config(
@@ -152,26 +155,32 @@ def handle_oauth_callback(authorization_response: str) -> Dict:
         
         flow.fetch_token(authorization_response=authorization_response)
         credentials = flow.credentials
+        logger.info(f"YouTube Auth: Got credentials, valid={credentials.valid}")
         
         # Save credentials to pickle file (local)
         try:
             with open(TOKEN_FILE, 'wb') as token:
                 pickle.dump(credentials, token)
+            logger.info("YouTube Auth: Saved to pickle file")
         except Exception as e:
-            print(f"Warning: Could not save to pickle file: {e}")
+            logger.warning(f"YouTube Auth: Could not save to pickle file: {e}")
         
         # Also save to Redis for persistence on Railway
+        logger.info(f"YouTube Auth: REDIS_AVAILABLE={REDIS_AVAILABLE}, redis_client={redis_client is not None}")
         if REDIS_AVAILABLE and redis_client:
             try:
                 creds_data = pickle.dumps(credentials)
                 creds_b64 = base64.b64encode(creds_data).decode('utf-8')
                 redis_client.set(REDIS_TOKEN_KEY, creds_b64)
-                print("✅ YouTube credentials saved to Redis")
+                logger.info(f"YouTube Auth: ✅ Credentials saved to Redis key '{REDIS_TOKEN_KEY}'")
             except Exception as e:
-                print(f"Warning: Could not save to Redis: {e}")
+                logger.error(f"YouTube Auth: ❌ Could not save to Redis: {e}")
+        else:
+            logger.warning("YouTube Auth: Redis not available, credentials only saved locally")
         
         return {'success': True, 'message': 'YouTube authorization successful!'}
     except Exception as e:
+        logger.error(f"YouTube Auth: OAuth callback error: {e}")
         return {'success': False, 'error': str(e)}
 
 
