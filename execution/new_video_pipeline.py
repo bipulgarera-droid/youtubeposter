@@ -1155,16 +1155,21 @@ class NewVideoPipeline:
             # Only the final subtitled video gets uploaded to Supabase
             
             
-            # Send video file to Telegram for preview
-            try:
-                with open(video_path, 'rb') as video_file:
-                    await self.bot.send_video(
-                        chat_id=self.chat_id,
-                        video=video_file,
-                        caption=f"🎬 Video preview ({duration/60:.1f} min)"
-                    )
-            except Exception as e:
-                print(f"Failed to send video preview: {e}")
+            # Send video file to Telegram for preview (skip if too large)
+            video_size_mb = os.path.getsize(video_path) / (1024 * 1024) if video_path and os.path.exists(video_path) else 0
+            if video_size_mb > 45:
+                await self.send_message(f"⚠️ Video is {video_size_mb:.1f}MB - too large for Telegram preview (limit 50MB). Video saved locally.")
+            else:
+                try:
+                    with open(video_path, 'rb') as video_file:
+                        await self.bot.send_video(
+                            chat_id=self.chat_id,
+                            video=video_file,
+                            caption=f"🎬 Video preview ({duration/60:.1f} min)"
+                        )
+                except Exception as e:
+                    print(f"Failed to send video preview: {e}")
+                    await self.send_message(f"⚠️ Video preview failed: {str(e)[:100]}")
             
             await self.send_keyboard(
                 f"🎬 **Video Generated**\n\n"
@@ -1237,17 +1242,22 @@ class NewVideoPipeline:
                 except Exception as e:
                     print(f"Failed to upload subtitled video to Supabase: {e}")
             
-            # Try to send video preview
+            # Try to send video preview (skip if too large)
             if subtitled_path and os.path.exists(subtitled_path):
-                try:
-                    with open(subtitled_path, 'rb') as video_file:
-                        await self.bot.send_video(
-                            chat_id=self.chat_id,
-                            video=video_file,
-                            caption="📝 Subtitled video preview"
-                        )
-                except Exception as e:
-                    print(f"Failed to send subtitled video preview: {e}")
+                video_size_mb = os.path.getsize(subtitled_path) / (1024 * 1024)
+                if video_size_mb > 45:
+                    await self.send_message(f"⚠️ Subtitled video is {video_size_mb:.1f}MB - too large for Telegram preview. You can download from Supabase.")
+                else:
+                    try:
+                        with open(subtitled_path, 'rb') as video_file:
+                            await self.bot.send_video(
+                                chat_id=self.chat_id,
+                                video=video_file,
+                                caption="📝 Subtitled video preview"
+                            )
+                    except Exception as e:
+                        print(f"Failed to send subtitled video preview: {e}")
+                        await self.send_message(f"⚠️ Video preview failed: {str(e)[:100]}")
             
             await self.send_keyboard(
                 f"✅ **Subtitled Video Generated**\n\n"
