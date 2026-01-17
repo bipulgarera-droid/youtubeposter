@@ -170,6 +170,15 @@ def burn_subtitles(video_path: str, ass_path: str, output_path: str) -> bool:
     """Use FFmpeg to burn ASS subtitles into video."""
     print(f"🔥 Burning subtitles into video...")
     
+    # Get video file size to estimate timeout
+    try:
+        file_size_mb = os.path.getsize(video_path) / (1024 * 1024)
+        # Estimate: ~1 minute per 10MB, minimum 10 minutes, max 60 minutes
+        estimated_timeout = max(600, min(3600, int(file_size_mb * 60 / 10)))
+        print(f"  File size: {file_size_mb:.1f}MB, timeout: {estimated_timeout}s")
+    except:
+        estimated_timeout = 1800  # Default 30 minutes
+    
     escaped_ass = ass_path.replace('\\', '/').replace(':', '\\:')
     
     cmd = [
@@ -178,23 +187,27 @@ def burn_subtitles(video_path: str, ass_path: str, output_path: str) -> bool:
         '-vf', f"ass='{escaped_ass}'",
         '-c:a', 'copy',
         '-c:v', 'libx264',
-        '-preset', 'fast',
-        '-crf', '18',
+        '-preset', 'veryfast',  # Faster encoding to avoid timeout
+        '-crf', '23',  # Slightly lower quality for speed
+        '-threads', '0',  # Use all available threads
         output_path
     ]
     
     print(f"  Command: {' '.join(cmd)}")
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=estimated_timeout)
         if result.returncode == 0:
             print(f"✅ Subtitled video saved: {output_path}")
             return True
         else:
-            print(f"❌ FFmpeg error: {result.stderr[:500]}")
+            # Log actual error for debugging
+            error_msg = result.stderr[-1000:] if result.stderr else "No error message"
+            print(f"❌ FFmpeg error (return code {result.returncode}):")
+            print(f"  {error_msg}")
             return False
     except subprocess.TimeoutExpired:
-        print("❌ FFmpeg timeout")
+        print(f"❌ FFmpeg timeout after {estimated_timeout}s")
         return False
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -256,7 +269,7 @@ def generate_subtitled_video(video_path: str, audio_path: str = None, output_dir
                 'message': 'Subtitles generated (Groq) and burned successfully'
             }
         else:
-            return {'success': False, 'error': 'FFmpeg burn failed'}
+            return {'success': False, 'error': 'FFmpeg burn failed. Video may be too large for server memory. Check Railway logs for details.'}
             
     except Exception as e:
         import traceback
