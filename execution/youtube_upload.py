@@ -30,12 +30,20 @@ except ImportError:
 # Redis for persistent token storage (Railway ephemeral filesystem)
 try:
     from redis import Redis
-    REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
-    redis_client = Redis.from_url(REDIS_URL)
-    REDIS_AVAILABLE = True
-except Exception:
+    REDIS_URL = os.getenv('REDIS_URL')
+    if REDIS_URL:
+        redis_client = Redis.from_url(REDIS_URL)
+        REDIS_AVAILABLE = True
+        print(f"YouTube Upload: Redis connected to {REDIS_URL[:30]}...")
+    else:
+        # No REDIS_URL set - won't work on Railway
+        REDIS_AVAILABLE = False
+        redis_client = None
+        print("YouTube Upload: REDIS_URL not set - credentials will not persist on Railway!")
+except Exception as e:
     REDIS_AVAILABLE = False
     redis_client = None
+    print(f"YouTube Upload: Redis connection failed: {e}")
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent
