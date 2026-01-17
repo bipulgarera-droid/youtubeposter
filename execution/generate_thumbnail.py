@@ -80,24 +80,121 @@ def compress_thumbnail(image_path: str, max_size_mb: float = 2.0) -> str:
 
 def generate_thumbnail_prompt(topic: str, style_notes: str = "") -> str:
     """
-    Generate an optimized prompt for thumbnail creation.
+    Generate an optimized prompt for thumbnail creation following the style guide.
+    Extracts the 2-4 word emotional punch from the title and includes it in the image.
     """
-    base_prompt = f"""Create a YouTube thumbnail image for a video about: {topic}
+    # Extract thumbnail text (2-4 word emotional punch) from topic/title
+    thumbnail_text = extract_thumbnail_text(topic)
+    
+    base_prompt = f"""Create a YouTube thumbnail image in ILLUSTRATED/CARTOON style (NOT photorealistic).
 
-Style requirements:
-- Dramatic, attention-grabbing visuals
-- High contrast colors (dark backgrounds work well)
-- Bold, impactful imagery
-- Financial/economic theme if relevant
-- Professional look, not cheap or clickbaity
-- 16:9 aspect ratio optimized
-- Leave space for text overlay on the right third
+TOPIC: {topic}
 
-{style_notes}
+TEXT TO RENDER: "{thumbnail_text}"
+- Position: RIGHT SIDE of the image, stacked vertically (each word on its own line)
+- Font style: BOLD sans-serif (like Impact or similar YouTube thumbnail font)
+- Text color: SOLID WHITE fill (completely opaque, no transparency, no holes)
+- Outline: THICK BLACK stroke around each letter for readability
+- Size: LARGE and prominent, taking up the right third of the image
+- Rendering: CLEAN and CRISP - no artifacts, no fuzzy edges, no missing parts
 
-Do NOT include any text in the image - just visuals."""
+COMPOSITION:
+1. LEFT SIDE: A character showing emotion - worried businessman in suit with hands on head looking shocked, OR man with back turned looking at destruction. Semi-realistic cartoon style. Orange/red jacket or suit for contrast.
+
+2. CENTER: Dramatic visual elements relevant to {topic}. Include fire, smoke, collapsing buildings, burning money, oil barrels, etc. for urgency. Dark moody stormy atmosphere.
+
+3. RIGHT SIDE: The text "{thumbnail_text}" prominently displayed with perfect clean white letters and black outline.
+
+STYLE:
+- Semi-realistic cartoon/illustration (like The Economist magazine covers)
+- Dark moody background (dark blue, stormy gray, deep purple)
+- Fire and orange/red accents for urgency
+- High contrast, punchy saturated colors
+- 16:9 aspect ratio (1280x720)
+- Dramatic apocalyptic mood
+
+{style_notes}"""
     
     return base_prompt
+
+
+def extract_thumbnail_text(topic: str) -> str:
+    """
+    Extract 2-4 word emotional punch from title based on style guide patterns.
+    
+    Correlations from reference channel:
+    - "DEATH of X" → "IT'S OVER" (Petrodollar example)
+    - "X is Collapsing" → "[X] IS DYING" (Europe example)
+    - "IMPOSSIBLE" → "ZERO CHANCE"
+    - "Mistake" / "FAILED" → "IT FAILED"
+    - "POORER" → "[X] IS BROKE"
+    - Parenthetical "(The Verdict)" → "THE REAL REASON"
+    """
+    topic_lower = topic.lower()
+    
+    # Pattern: "DEATH of X" → "IT'S OVER" (like Petrodollar)
+    if "death" in topic_lower:
+        return "IT'S OVER"
+    
+    # Pattern: "Collapsing" → "[X] IS DYING"
+    if "collapsing" in topic_lower:
+        import re
+        match = re.search(r"(\w+)'?s?\s+(?:economy\s+)?(?:is\s+)?collapsing", topic_lower)
+        if match:
+            subject = match.group(1).upper()
+            return f"{subject} IS DYING"
+        return "IT'S DYING"
+    
+    # Pattern: "IMPOSSIBLE"
+    if "impossible" in topic_lower:
+        return "ZERO CHANCE"
+    
+    # Pattern: "FAILED" or "Mistake"
+    if "failed" in topic_lower or "mistake" in topic_lower:
+        return "IT FAILED"
+    
+    # Pattern: "POORER" or "BROKE"
+    if "poorer" in topic_lower or "broke" in topic_lower:
+        # Extract country
+        import re
+        match = re.search(r"why (\w+)", topic_lower)
+        if match:
+            country = match.group(1).upper()
+            return f"{country} IS BROKE"
+        return "IT'S BROKE"
+    
+    # Pattern: "Can't Grow" or "DYING"
+    if "can't grow" in topic_lower or "dying" in topic_lower:
+        import re
+        match = re.search(r"why (\w+)", topic_lower)
+        if match:
+            country = match.group(1).upper()
+            return f"WHY {country} IS DYING"
+        return "IT'S DYING"
+    
+    # Pattern: "UNREFORMABLE" or "UNFIXABLE"
+    if "unreformable" in topic_lower or "unfixable" in topic_lower:
+        import re
+        match = re.search(r"(\w+) (?:economy|is)", topic_lower)
+        if match:
+            country = match.group(1).upper()
+            return f"{country} IS UNFIXABLE"
+        return "IT'S UNFIXABLE"
+    
+    # Pattern: Parenthetical hint - often the thumbnail text
+    import re
+    paren_match = re.search(r"\(([^)]+)\)", topic)
+    if paren_match:
+        paren_content = paren_match.group(1)
+        # Check if it's a good candidate
+        if len(paren_content.split()) <= 5:
+            # Shorten if needed
+            words = paren_content.upper().split()
+            if len(words) <= 4:
+                return paren_content.upper()
+    
+    # Default fallback
+    return "IT'S OVER"
 
 
 def generate_thumbnail_with_gemini(
@@ -129,42 +226,44 @@ def generate_thumbnail_with_gemini(
     prompt = generate_thumbnail_prompt(topic, style_notes)
     
     try:
-        # Use Nano Banana Pro for thumbnail generation
-        model = genai.GenerativeModel('gemini-3-pro-image-preview')
+        import requests
         
-        # If we have a style reference, include it
-        contents = [prompt]
-        if style_reference and Path(style_reference).exists():
-            # Load and encode reference image
-            with open(style_reference, 'rb') as f:
-                image_data = f.read()
-            contents = [
-                "Generate a thumbnail in this style:",
-                {"mime_type": "image/png", "data": base64.b64encode(image_data).decode()},
-                prompt
-            ]
+        # Use Nano Banana Pro (gemini-3-pro-image-preview) for thumbnail generation
+        api_key = GEMINI_API_KEY
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key={api_key}"
         
-        response = model.generate_content(
-            contents,
-            generation_config={
-                "response_mime_type": "image/png"
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }],
+            "generationConfig": {
+                "responseModalities": ["TEXT", "IMAGE"]
             }
-        )
+        }
         
-        # Save the generated image
-        if hasattr(response, 'candidates') and response.candidates:
-            for candidate in response.candidates:
-                if hasattr(candidate, 'content') and candidate.content.parts:
-                    for part in candidate.content.parts:
-                        if hasattr(part, 'inline_data'):
-                            image_data = base64.b64decode(part.inline_data.data)
-                            with open(output_path, 'wb') as f:
-                                f.write(image_data)
-                            print(f"✅ Thumbnail saved: {output_path}")
-                            return output_path
+        response = requests.post(url, json=payload, timeout=120)
         
-        print("⚠️ No image in response")
-        return None
+        if response.status_code == 200:
+            result = response.json()
+            
+            for candidate in result.get('candidates', []):
+                for part in candidate.get('content', {}).get('parts', []):
+                    if 'inlineData' in part:
+                        image_data = base64.b64decode(part['inlineData']['data'])
+                        
+                        # Ensure output directory exists
+                        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                        
+                        with open(output_path, 'wb') as f:
+                            f.write(image_data)
+                        print(f"✅ Thumbnail saved: {output_path}")
+                        return output_path
+            
+            print("⚠️ No image in response")
+            return None
+        else:
+            print(f"❌ API error: {response.status_code} - {response.text[:200]}")
+            return None
         
     except Exception as e:
         print(f"❌ Thumbnail generation failed: {e}")

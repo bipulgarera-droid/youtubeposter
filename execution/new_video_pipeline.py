@@ -1216,10 +1216,18 @@ class NewVideoPipeline:
                 await self.send_message(f"❌ Subtitle generation failed: {result.get('error', 'Unknown error')}")
                 return
             
-            self.state["subtitled_video_path"] = result.get("subtitled_video")
-            self.state["srt_path"] = result.get("srt_path")
+            subtitled_path = result.get("subtitled_video")
+            srt_result_path = result.get("srt_path")
             
-            subtitled_path = self.state.get("subtitled_video_path", "None")
+            # Validate subtitled video path
+            if not subtitled_path or not os.path.exists(subtitled_path):
+                await self.send_message(f"❌ Subtitled video file not created. FFmpeg may have failed.")
+                print(f"DEBUG: subtitled_video from result = {subtitled_path}")
+                return
+            
+            self.state["subtitled_video_path"] = subtitled_path
+            self.state["srt_path"] = srt_result_path
+            
             srt_path = self.state.get("srt_path")
             
             # Upload subtitled video and SRT to Supabase for persistence
@@ -1349,18 +1357,26 @@ class NewVideoPipeline:
         await self.send_message("🖼️ Generating thumbnail...")
         
         thumbnail_path = os.path.join(self.output_dir, "thumbnail.jpg")
-        generate_thumbnail(
-            topic=self.state.get("topic", self.state.get("title", "")),
-            title=self.state.get("title", ""),
-            output_path=thumbnail_path,
-            auto_compress=True  # Ensure compression for YouTube
-        )
-        self.state["thumbnail_path"] = thumbnail_path
+        try:
+            result = generate_thumbnail(
+                topic=self.state.get("topic", self.state.get("title", "")),
+                title=self.state.get("title", ""),
+                output_path=thumbnail_path,
+                auto_compress=True  # Ensure compression for YouTube
+            )
+            if not result or not os.path.exists(thumbnail_path):
+                await self.send_message("⚠️ Thumbnail generation failed. Proceeding without thumbnail...")
+                self.state["thumbnail_path"] = None
+            else:
+                self.state["thumbnail_path"] = thumbnail_path
+        except Exception as e:
+            await self.send_message(f"⚠️ Thumbnail error: {str(e)[:100]}. Proceeding without thumbnail...")
+            self.state["thumbnail_path"] = None
         
         # Send thumbnail preview as photo
-        if os.path.exists(thumbnail_path):
+        if self.state.get("thumbnail_path") and os.path.exists(self.state["thumbnail_path"]):
             try:
-                with open(thumbnail_path, 'rb') as thumb_file:
+                with open(self.state["thumbnail_path"], 'rb') as thumb_file:
                     await self.bot.send_photo(
                         chat_id=self.chat_id,
                         photo=thumb_file,
