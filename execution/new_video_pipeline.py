@@ -1350,9 +1350,8 @@ class NewVideoPipeline:
         
         thumbnail_path = os.path.join(self.output_dir, "thumbnail.jpg")
         generate_thumbnail(
-            title=self.state["title"],
-            topic=self.state["topic"],
-            style=self.state["style"],
+            topic=self.state.get("topic", self.state.get("title", "")),
+            title=self.state.get("title", ""),
             output_path=thumbnail_path
         )
         self.state["thumbnail_path"] = thumbnail_path
