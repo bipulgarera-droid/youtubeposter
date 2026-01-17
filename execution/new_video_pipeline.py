@@ -1298,9 +1298,12 @@ class NewVideoPipeline:
         await self.send_message("📊 Generating tags and description...")
         
         # Generate timestamps from SRT
+        timestamps_text = ""
         if self.state.get("srt_path"):
-            timestamps = generate_timestamps_from_srt(self.state["srt_path"])
-            self.state["timestamps"] = timestamps
+            timestamps_result = generate_timestamps_from_srt(self.state["srt_path"])
+            if timestamps_result.get("success"):
+                timestamps_text = timestamps_result.get("formatted", "")
+                self.state["timestamps"] = timestamps_text
         
         # Generate full metadata (tags, description with timestamps)
         # Get reference metadata from state (set during research phase)
@@ -1314,7 +1317,7 @@ class NewVideoPipeline:
             original_tags=original_tags,
             topic=self.state.get("topic", self.state.get("title", "")),
             script_text=self.state.get("script", ""),
-            timestamps_text=self.state.get("timestamps", "")
+            timestamps_text=timestamps_text
         )
         self.state["description"] = metadata.get("description")
         self.state["tags"] = metadata.get("tags", [])
