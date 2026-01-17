@@ -9,8 +9,12 @@ import json
 import pickle
 import base64
 import tempfile
+import logging
 from pathlib import Path
 from typing import Dict, Optional, List
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Google API imports
 try:
@@ -179,37 +183,37 @@ def get_credentials() -> Optional[Credentials]:
     if REDIS_AVAILABLE and redis_client:
         try:
             creds_b64 = redis_client.get(REDIS_TOKEN_KEY)
-            print(f"DEBUG: Redis lookup for '{REDIS_TOKEN_KEY}': {'found' if creds_b64 else 'empty'}")
+            logger.info(f"YouTube Auth: Redis lookup for '{REDIS_TOKEN_KEY}': {'found' if creds_b64 else 'empty'}")
             if creds_b64:
                 creds_data = base64.b64decode(creds_b64)
                 credentials = pickle.loads(creds_data)
-                print(f"DEBUG: Credentials loaded from Redis, valid={credentials.valid if credentials else 'None'}")
+                logger.info(f"YouTube Auth: Credentials loaded from Redis, valid={credentials.valid if credentials else 'None'}")
                 if credentials and credentials.valid:
                     return credentials
                 # Return even if expired - might be refreshable
                 if credentials:
                     return credentials
         except Exception as e:
-            print(f"Warning: Could not load from Redis: {e}")
+            logger.warning(f"YouTube Auth: Could not load from Redis: {e}")
     else:
-        print(f"DEBUG: Redis not available (REDIS_AVAILABLE={REDIS_AVAILABLE})")
+        logger.info(f"YouTube Auth: Redis not available (REDIS_AVAILABLE={REDIS_AVAILABLE})")
     
     # Fallback to pickle file
     if TOKEN_FILE.exists():
         try:
-            print(f"DEBUG: Loading from pickle file: {TOKEN_FILE}")
+            logger.info(f"YouTube Auth: Loading from pickle file: {TOKEN_FILE}")
             with open(TOKEN_FILE, 'rb') as token:
                 credentials = pickle.load(token)
-                print(f"DEBUG: Pickle credentials valid={credentials.valid if credentials else 'None'}")
+                logger.info(f"YouTube Auth: Pickle credentials valid={credentials.valid if credentials else 'None'}")
                 if credentials and credentials.valid:
                     return credentials
                 return credentials
         except Exception as e:
-            print(f"DEBUG: Pickle load failed: {e}")
+            logger.warning(f"YouTube Auth: Pickle load failed: {e}")
     else:
-        print(f"DEBUG: Token pickle file does not exist at {TOKEN_FILE}")
+        logger.info(f"YouTube Auth: Token pickle file does not exist at {TOKEN_FILE}")
     
-    print("DEBUG: No credentials found anywhere")
+    logger.info("YouTube Auth: No credentials found anywhere")
     return None
 
 
@@ -217,7 +221,7 @@ def is_authenticated() -> bool:
     """Check if we have valid credentials."""
     creds = get_credentials()
     result = creds is not None
-    print(f"DEBUG: is_authenticated() = {result}")
+    logger.info(f"YouTube Auth: is_authenticated() = {result}")
     return result
 
 
