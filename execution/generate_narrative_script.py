@@ -368,11 +368,34 @@ def generate_narrative_script(
     if beats is None:
         beats = DEFAULT_BEATS.copy()
     
-    # Scale beats for longer videos
+    # Scale beats for target duration
     target_words = target_minutes * 150  # ~150 words per minute
     current_total = sum(b['word_target'] for b in beats)
     
-    if target_words > current_total * 1.3:
+    # For SHORT videos (test mode), use minimal beats
+    if target_minutes <= 3:
+        # Use only hook + rally for ultra-short test videos
+        minimal_beats = [
+            {
+                "id": "hook",
+                "name": "Hook",
+                "word_target": max(50, target_words // 2),
+                "purpose": "Grab attention with a single compelling fact or question",
+                "required_elements": ["one surprising fact", "immediate relevance"],
+                "ends_with": "open loop"
+            },
+            {
+                "id": "rally",
+                "name": "Rally",
+                "word_target": max(50, target_words // 2),
+                "purpose": "Quick conclusion and call to action",
+                "required_elements": ["key takeaway", "call to action"],
+                "ends_with": "memorable closing"
+            }
+        ]
+        print(f"🧪 TEST MODE: Using {len(minimal_beats)} minimal beats for ~{target_words} words")
+        beats = minimal_beats
+    elif target_words > current_total * 1.3:
         # For longer videos, duplicate some beats
         beats = scale_beats_for_duration(beats, target_words)
     
