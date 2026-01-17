@@ -288,10 +288,11 @@ def get_job_assets(job_id: str) -> dict:
                 
                 assets['images'] = [f"{job_id}/images/{img['name']}" for img in all_images if img['name'].endswith('.png')]
                 assets['images'].sort()
-            elif name == 'script':
-                scripts = client.storage.from_(BUCKET_NAME).list(f"{job_id}/script")
+            elif name == 'script' or name == 'scripts':
+                # Check both 'script' and 'scripts' folder names
+                scripts = client.storage.from_(BUCKET_NAME).list(f"{job_id}/{name}")
                 if scripts:
-                    assets['script'] = f"{job_id}/script/{scripts[0]['name']}"
+                    assets['script'] = f"{job_id}/{name}/{scripts[0]['name']}"
             elif name == 'video':
                 videos = client.storage.from_(BUCKET_NAME).list(f"{job_id}/video")
                 for v in videos:

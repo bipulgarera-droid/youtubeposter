@@ -330,6 +330,24 @@ class NewVideoPipeline:
                 self.state["script"] = saved_state.get("script", "")
                 await self.send_message(f"📋 Restored state: {self.state.get('title', 'Unknown')}")
         
+        # If no script from state.json, try to download script file
+        if not self.state.get("script") and assets.get("script"):
+            await self.send_message("📥 Downloading script from cloud...")
+            script_local_path = os.path.join(self.output_dir, "script.txt")
+            if download_file and download_file(assets["script"], script_local_path):
+                with open(script_local_path, 'r') as f:
+                    self.state["script"] = f.read()
+                await self.send_message("✅ Script downloaded from cloud")
+        
+        # Last resort: try to get from Redis (current session)
+        if not self.state.get("script"):
+            redis_state = self.load_state(self.chat_id)
+            if redis_state and redis_state.get("script"):
+                self.state["script"] = redis_state["script"]
+                self.state["title"] = redis_state.get("title", "Resumed")
+                self.state["topic"] = redis_state.get("topic", "")
+                await self.send_message("📋 Restored script from local session")
+        
         if not self.state.get("script"):
             await self.send_message("❌ No script found. Cannot generate audio without script.")
             await self.start()
@@ -891,17 +909,19 @@ class NewVideoPipeline:
             
             # Upload script to Supabase storage
             if STORAGE_AVAILABLE and upload_file:
-                job_id = f"video_{self.chat_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                # Use existing job_id or create new one
+                if not hasattr(self, 'supabase_job_id') or not self.supabase_job_id:
+                    self.supabase_job_id = f"video_{self.chat_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                 try:
                     script_url = upload_file(
                         local_path=script_path,
-                        job_id=job_id,
+                        job_id=self.supabase_job_id,
                         step_name='scripts',
                         filename=f"script.txt"
                     )
                     if script_url:
                         self.state['script_url'] = script_url
-                        self.state['supabase_job_id'] = job_id
+                        self.state['supabase_job_id'] = self.supabase_job_id
                         print(f"✅ Script uploaded to Supabase: {script_url}")
                 except Exception as e:
                     print(f"Failed to upload script to Supabase: {e}")
