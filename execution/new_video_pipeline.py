@@ -1352,13 +1352,25 @@ class NewVideoPipeline:
         generate_thumbnail(
             topic=self.state.get("topic", self.state.get("title", "")),
             title=self.state.get("title", ""),
-            output_path=thumbnail_path
+            output_path=thumbnail_path,
+            auto_compress=True  # Ensure compression for YouTube
         )
         self.state["thumbnail_path"] = thumbnail_path
         
+        # Send thumbnail preview as photo
+        if os.path.exists(thumbnail_path):
+            try:
+                with open(thumbnail_path, 'rb') as thumb_file:
+                    await self.bot.send_photo(
+                        chat_id=self.chat_id,
+                        photo=thumb_file,
+                        caption="🖼️ Thumbnail preview"
+                    )
+            except Exception as e:
+                print(f"Failed to send thumbnail preview: {e}")
+        
         await self.send_keyboard(
-            f"🖼️ **Thumbnail Generated**\n\n"
-            f"Path: `{thumbnail_path}`\n\n"
+            f"🖼️ **Thumbnail Generated**\\n\\n"
             f"Approve thumbnail?",
             [
                 ("✅ Approve Thumbnail", "newvideo_thumbnail_approve"),
@@ -1377,12 +1389,12 @@ class NewVideoPipeline:
         """Prepare files for upload and show final confirmation."""
         await self.send_message("📦 Preparing files for upload...")
         
-        # Rename files
-        topic_slug = extract_topic_from_title(self.state["title"])
+        # Rename files - use raw topic or extract from title
+        topic_for_naming = self.state.get("topic") or self.state.get("raw_topic") or extract_topic_from_title(self.state["title"])
         new_video, new_thumb = rename_output_files(
-            self.state["subtitled_video_path"] or self.state["video_path"],
-            self.state["thumbnail_path"],
-            topic_slug
+            self.state.get("subtitled_video_path") or self.state.get("video_path"),
+            self.state.get("thumbnail_path"),
+            topic_for_naming
         )
         self.state["final_video_path"] = new_video
         self.state["final_thumbnail_path"] = new_thumb
@@ -1411,8 +1423,8 @@ class NewVideoPipeline:
             title=self.state["title"],
             description=self.state["description"],
             tags=self.state["tags"],
-            thumbnail_path=self.state["final_thumbnail_path"],
-            captions_path=self.state.get("srt_path")
+            thumbnail_path=self.state.get("final_thumbnail_path"),
+            srt_path=self.state.get("srt_path")
         )
         
         if result.get("success"):
