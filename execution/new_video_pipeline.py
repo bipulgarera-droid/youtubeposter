@@ -1432,7 +1432,7 @@ class NewVideoPipeline:
         """Upload to YouTube."""
         await self.send_message("📤 Uploading to YouTube...")
         
-        from youtube_upload import upload_video_with_captions
+        from execution.youtube_upload import upload_video_with_captions
         
         result = upload_video_with_captions(
             video_path=self.state["final_video_path"],
