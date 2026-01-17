@@ -207,6 +207,20 @@ def generate_timestamps_from_srt(srt_path: str, num_chapters: int = 10) -> Dict:
     
     print(f"   Found {len(entries)} subtitle entries")
     
+    # Get video duration from last subtitle entry
+    if entries:
+        last_entry = entries[-1]
+        video_duration_seconds = srt_time_to_seconds(last_entry['end_time'])
+        video_duration_minutes = video_duration_seconds / 60
+        print(f"   Video duration: {video_duration_minutes:.1f} minutes")
+        
+        # Skip timestamps for short videos (under 5 minutes)
+        # YouTube chapters require minimum 10 seconds between them anyway
+        # Short videos don't benefit from chapters and hallucinated ones look bad
+        if video_duration_minutes < 5:
+            print(f"   ⏭️ Skipping timestamps - video too short (< 5 min)")
+            return {'chapters': [], 'formatted': '', 'success': True, 'skipped': True, 'reason': 'video_too_short'}
+    
     print(f"🧠 Generating {num_chapters} chapter titles...")
     chapters = generate_chapter_titles(entries, num_chapters)
     

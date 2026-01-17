@@ -60,7 +60,7 @@ def generate_description(
 ) -> str:
     """
     Generate an optimized YouTube description with timestamps.
-    Uses the hook from the script and adds SEO elements.
+    Creates a 2-paragraph summary that explains what the video covers.
     
     Args:
         script_text: Full script text
@@ -69,28 +69,29 @@ def generate_description(
         timestamps_text: Pre-formatted timestamps (from generate_timestamps.py)
         include_timestamps: Whether to include timestamps section
     """
-    # Extract first 2-3 sentences as hook
-    sentences = re.split(r'(?<=[.!?])\s+', script_text)
-    hook = ' '.join(sentences[:3])[:300]
-    
-    prompt = f"""Generate a YouTube video description:
+    prompt = f"""Generate a YouTube video description in this EXACT style:
 
-SCRIPT HOOK: {hook}
+REFERENCE STYLE EXAMPLE:
+"Why is invading the United States impossible? Even if the US military vanished overnight, the geography itself serves as an unconquerable fortress. In this video, we break down the terrifying logistical reality that any invading superpower would face—from the "liquid walls" of the Atlantic and Pacific Oceans to the natural kill zones of the Rocky Mountains.
+
+We explore why the US is geographically engineered to destroy supply lines and why the 400 million civilian firearms hidden in the suburbs create a "blade of grass" insurgency problem that no army can solve. Discover the economic, geographic, and logistical reasons why a ground invasion of America is a suicide mission."
+
+NOW WRITE A DESCRIPTION FOR THIS VIDEO:
+
 TOPIC: {topic}
-REFERENCE DESCRIPTION (for style): {original_description[:500] if original_description else 'N/A'}
-
-STRUCTURE:
-1. First 2 sentences: Compelling hook from the script (this shows in search results)
-2. Line break, then "In this video, we cover:" with 3-5 bullet points
-3. Line break, then call to action (subscribe, comment)
-4. Line break, then disclaimer if financial content
+FULL SCRIPT:
+{script_text}
 
 RULES:
-- Keep it under 500 characters for the main content
-- Use plain text only - NO asterisks, NO markdown, NO bold
-- Use emoji sparingly (1-2 max)
-- Do NOT include timestamps - they will be added separately
-- Include 2-3 relevant hashtags at the end
+1. Write EXACTLY 2 paragraphs
+2. Paragraph 1: Opening question/statement + "In this video, we break down/explore/explain..."
+3. Paragraph 2: "We explore/discover/examine..." + specific topics covered
+4. Use the ACTUAL content from the script - summarize what's really discussed
+5. Use plain text only - NO asterisks, NO markdown, NO bold, NO bullet points
+6. Sound journalistic and authoritative
+7. Do NOT copy the script directly - SUMMARIZE and REFRAME it
+8. Keep under 600 characters total
+9. Do NOT include timestamps, hashtags, subscribe CTA, or anything else
 
 DESCRIPTION:"""
 
@@ -101,6 +102,8 @@ DESCRIPTION:"""
         # Remove any markdown
         description = description.replace('*', '')
         description = description.replace('_', '')
+        # Remove any quotes if the model wrapped it
+        description = description.strip('"')
         
         # Add timestamps if provided
         if include_timestamps and timestamps_text:
@@ -110,7 +113,7 @@ DESCRIPTION:"""
     except Exception as e:
         print(f"Description generation failed: {e}")
         # Fallback to simple description
-        fallback = f"{hook}\n\n{topic}\n\nSubscribe for more updates!"
+        fallback = f"In this video, we explore {topic}."
         if timestamps_text:
             fallback += "\n\n" + timestamps_text
         return fallback

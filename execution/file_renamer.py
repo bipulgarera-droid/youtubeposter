@@ -15,12 +15,12 @@ def generate_topic_slug(topic: str, max_words: int = 3) -> str:
     Generate a URL-safe topic slug from a topic string.
     
     Examples:
-    - "Germany's $500 Billion Mistake" -> "germany-energy-crisis"
-    - "Why France is POORER Than You Think" -> "france-economic-decline"
-    - "The Slow DEATH of The Petrodollar" -> "petrodollar-death"
+    - "Germany's $500 Billion Mistake" -> "germanyenergycrisis"
+    - "Why France is POORER Than You Think" -> "franceeconomicdecline"
+    - "The Slow DEATH of The Petrodollar" -> "petrodollardeath"
     """
     # Remove special characters
-    clean = re.sub(r'[^\w\s-]', '', topic.lower())
+    clean = re.sub(r'[^\w\s]', '', topic.lower())
     
     # Split into words
     words = clean.split()
@@ -30,7 +30,7 @@ def generate_topic_slug(topic: str, max_words: int = 3) -> str:
         'the', 'a', 'an', 'is', 'are', 'was', 'were', 'of', 'in', 'to', 
         'for', 'on', 'with', 'at', 'by', 'from', 'why', 'how', 'what',
         'than', 'you', 'think', 'and', 'or', 'but', 'that', 'this',
-        'its', 'not', 'it', 'be', 'as', 'they', 'their', 'there'
+        'its', 'not', 'it', 'be', 'as', 'they', 'their', 'there', 'test'
     }
     
     meaningful_words = [w for w in words if w not in stopwords and len(w) > 2]
@@ -38,8 +38,8 @@ def generate_topic_slug(topic: str, max_words: int = 3) -> str:
     # Take first N meaningful words
     slug_words = meaningful_words[:max_words]
     
-    # Join with hyphen
-    slug = '-'.join(slug_words)
+    # Join WITHOUT dashes (user preference)
+    slug = ''.join(slug_words)
     
     return slug or 'video'
 

@@ -1330,14 +1330,14 @@ class NewVideoPipeline:
         self.state["description"] = metadata.get("description")
         self.state["tags"] = metadata.get("tags", [])
         
-        # Show for approval
-        desc_preview = self.state["description"][:500] if self.state["description"] else "No description"
-        tags_preview = ", ".join(self.state["tags"][:8]) if self.state["tags"] else "No tags"
+        # Show for approval - full preview
+        desc_preview = self.state["description"][:600] if self.state["description"] else "No description"
+        all_tags = ", ".join(self.state["tags"]) if self.state["tags"] else "No tags"
         
         await self.send_keyboard(
             f"📊 **Metadata Generated**\n\n"
-            f"**Tags:** {tags_preview}...\n\n"
-            f"**Description Preview:**\n```\n{desc_preview}...\n```\n\n"
+            f"**Tags ({len(self.state['tags'])}):** {all_tags}\n\n"
+            f"**Description Preview:**\n```\n{desc_preview}\n```\n\n"
             f"Approve metadata?",
             [
                 ("✅ Approve Metadata", "newvideo_metadata_approve"),
