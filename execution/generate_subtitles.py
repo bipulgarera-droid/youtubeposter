@@ -104,7 +104,7 @@ def srt_to_ass_with_highlights(srt_content: str) -> str:
     """
     
     # ASS header with styles matching YouTube-style captions
-    # Style: Arial Black, Size 72, White text, Black outline (4px), Shadow (2px), Bottom Center
+    # Style: DejaVu Sans Bold (available in container), Size 72, White text, Black outline (4px), Shadow (2px), Bottom Center
     ass_header = """[Script Info]
 Title: Auto-Generated Subtitles
 ScriptType: v4.00+
@@ -114,7 +114,7 @@ PlayResY: 1080
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial Black,72,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,4,2,2,10,10,60,1
+Style: Default,DejaVu Sans,72,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,4,2,2,10,10,60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
