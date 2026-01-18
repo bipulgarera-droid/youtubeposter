@@ -1230,19 +1230,11 @@ class NewVideoPipeline:
             
             srt_path = self.state.get("srt_path")
             
-            # Upload subtitled video and SRT to Supabase for persistence
+            # Upload SRT to Supabase for persistence
+            # NOTE: We skip subtitled VIDEO upload because Supabase free tier has 50MB limit
+            # and most videos exceed that. The video stays in Railway /tmp until restart.
             if STORAGE_AVAILABLE:
                 try:
-                    if subtitled_path and os.path.exists(subtitled_path):
-                        subtitled_url = upload_file(
-                            local_path=subtitled_path,
-                            job_id=self.supabase_job_id,
-                            step_name="video",
-                            filename="video_subtitled.mp4"
-                        )
-                        if subtitled_url:
-                            self.state["subtitled_video_url"] = subtitled_url
-                    
                     if srt_path and os.path.exists(srt_path):
                         srt_url = upload_file(
                             local_path=srt_path,
@@ -1255,9 +1247,8 @@ class NewVideoPipeline:
                     
                     # Also upload state for recovery
                     upload_state(self.supabase_job_id, self.state)
-                    await self.send_message(f"☁️ Subtitled video uploaded to cloud storage")
                 except Exception as e:
-                    print(f"Failed to upload subtitled video to Supabase: {e}")
+                    print(f"Failed to upload SRT to Supabase: {e}")
             
             # Try to send video preview (skip if too large)
             if subtitled_path and os.path.exists(subtitled_path):
