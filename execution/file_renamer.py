@@ -12,12 +12,12 @@ from typing import Tuple
 
 def generate_topic_slug(topic: str, max_words: int = 3) -> str:
     """
-    Generate a URL-safe topic slug from a topic string.
+    Generate a topic slug from a topic string.
     
     Examples:
-    - "Germany's $500 Billion Mistake" -> "germanyenergycrisis"
-    - "Why France is POORER Than You Think" -> "franceeconomicdecline"
-    - "The Slow DEATH of The Petrodollar" -> "petrodollardeath"
+    - "Germany's $500 Billion Mistake" -> "germany energy crisis"
+    - "Why France is POORER Than You Think" -> "france economic decline"
+    - "The Slow DEATH of The Petrodollar" -> "petrodollar death"
     """
     # Remove special characters
     clean = re.sub(r'[^\w\s]', '', topic.lower())
@@ -38,8 +38,8 @@ def generate_topic_slug(topic: str, max_words: int = 3) -> str:
     # Take first N meaningful words
     slug_words = meaningful_words[:max_words]
     
-    # Join WITHOUT dashes (user preference)
-    slug = ''.join(slug_words)
+    # Join with space (user preference for readable filenames)
+    slug = ' '.join(slug_words)
     
     return slug or 'video'
 

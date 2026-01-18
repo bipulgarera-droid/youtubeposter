@@ -188,13 +188,13 @@ def format_timestamps_for_description(chapters: List[Dict]) -> str:
     return "\n".join(lines)
 
 
-def generate_timestamps_from_srt(srt_path: str, num_chapters: int = 10) -> Dict:
+def generate_timestamps_from_srt(srt_path: str, num_chapters: int = None) -> Dict:
     """
     Main function: Generate timestamps from SRT file.
     
     Args:
         srt_path: Path to SRT file
-        num_chapters: Target number of chapters
+        num_chapters: Target number of chapters (auto-calculated if None)
     
     Returns:
         Dict with chapters list and formatted string
@@ -208,6 +208,7 @@ def generate_timestamps_from_srt(srt_path: str, num_chapters: int = 10) -> Dict:
     print(f"   Found {len(entries)} subtitle entries")
     
     # Get video duration from last subtitle entry
+    video_duration_minutes = 0
     if entries:
         last_entry = entries[-1]
         video_duration_seconds = srt_time_to_seconds(last_entry['end_time'])
@@ -215,13 +216,15 @@ def generate_timestamps_from_srt(srt_path: str, num_chapters: int = 10) -> Dict:
         print(f"   Video duration: {video_duration_minutes:.1f} minutes")
         
         # Skip timestamps for short videos (under 5 minutes)
-        # YouTube chapters require minimum 10 seconds between them anyway
-        # Short videos don't benefit from chapters and hallucinated ones look bad
         if video_duration_minutes < 5:
             print(f"   ⏭️ Skipping timestamps - video too short (< 5 min)")
             return {'chapters': [], 'formatted': '', 'success': True, 'skipped': True, 'reason': 'video_too_short'}
     
-    print(f"🧠 Generating {num_chapters} chapter titles...")
+    # Auto-calculate chapters: 1 chapter per 1.5 minutes, min 5, max 20
+    if num_chapters is None:
+        num_chapters = max(5, min(20, int(video_duration_minutes / 1.5)))
+    
+    print(f"🧠 Generating {num_chapters} chapter titles for {video_duration_minutes:.1f} min video...")
     chapters = generate_chapter_titles(entries, num_chapters)
     
     if not chapters:
