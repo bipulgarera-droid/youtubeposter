@@ -1,0 +1,87 @@
+[
+  {
+    "url": "https://nashvillebanner.com/2026/01/09/venezuela-nicolas-maduro-nashville-immigrants/",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___nashvillebanner_com_2026_01_09_venezuela_nicolas_maduro_nashville_immigrants__495985.png"
+  },
+  {
+    "url": "https://thunderword.highline.edu/2026/01/08/u-s-takes-venezuelan-leader-nicolas-maduro-into-custody-venezuela-faces-uncertain-future/",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___thunderword_highline_edu_2026_01_08_u_s_takes_venezuelan_leader_nicolas_maduro_into_custody__512029.png"
+  },
+  {
+    "url": "https://www.cfr.org/article/guide-maduros-capture-and-venezuelas-uncertain-future",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___www_cfr_org_article_guide_maduros_capture_and_venezuelas_uncertain_future_533427.png"
+  },
+  {
+    "url": "https://www.thestatesman.com/world/decoding-trumps-big-oil-game-behind-venezuela-attack-1503537772.html/amp",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___www_thestatesman_com_world_decoding_trumps_big_oil_game_behind_venezuela_attack_1503537772_h_549755.png"
+  },
+  {
+    "url": "https://www.nationthailand.com/blogs/the-opinion/40060974",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___www_nationthailand_com_blogs_the_opinion_40060974_566342.png"
+  },
+  {
+    "url": "https://en.clickpetroleoegas.com.br/por-que-os-eua-precisam-das-reservas-de-petroleo-da-venezuela-mesmo-com-303-bilhoes-de-barris-e-producao-propria-recorde-refinarias-do-golfo-dependem-de-crude-extra-pesado-rico-em-enxofre-qu-afch/",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___en_clickpetroleoegas_com_br_por_que_os_eua_precisam_das_reservas_de_petroleo_da_venezuela_me_582738.png"
+  },
+  {
+    "url": "https://www.justiceinfo.net/en/154205-trump-on-venezuela-the-rule-of-law-is-naked-lets-not-talk-about-it.html",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___www_justiceinfo_net_en_154205_trump_on_venezuela_the_rule_of_law_is_naked_lets_not_talk_abou_599303.png"
+  },
+  {
+    "url": "https://www.manisteenews.com/news/article/reactions-to-nicol-s-maduro-s-capture-and-21284830.php",
+    "success": false,
+    "error": "Navigation timeout of 60000 ms exceeded"
+  },
+  {
+    "url": "https://www.houstonchronicle.com/opinion/outlook/article/trump-maduro-venezuela-capture-immigrants-oil-21285963.php",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___www_houstonchronicle_com_opinion_outlook_article_trump_maduro_venezuela_capture_immigrants_o_686823.png"
+  },
+  {
+    "url": "https://ddia.org/en/meet-the-key-voices-driving-social-media-conversation-venezuela",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___ddia_org_en_meet_the_key_voices_driving_social_media_conversation_venezuela_705447.png"
+  },
+  {
+    "url": "https://discoveryalert.com.au/modern-oil-sanctions-venezuela-complex-embargo-2026/",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___discoveryalert_com_au_modern_oil_sanctions_venezuela_complex_embargo_2026__722706.png"
+  },
+  {
+    "url": "https://abcnews.go.com/International/live-updates/venezuela-live-updates-trump-give-details-after-us/?id=127792811",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___abcnews_go_com_international_live_updates_venezuela_live_updates_trump_give_details_after_us_745985.png"
+  },
+  {
+    "url": "https://discoveryalert.com.au/international-legal-framework-constitutional-constraints-2026/",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___discoveryalert_com_au_international_legal_framework_constitutional_constraints_2026__761465.png"
+  },
+  {
+    "url": "https://etedge-insights.com/featured-insights/geopolitics-and-strategy/a-regime-change-in-venezuela-could-have-grim-consequences-for-canadas-oil-sector/amp/",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___etedge_insights_com_featured_insights_geopolitics_and_strategy_a_regime_change_in_venezuela__777052.png"
+  },
+  {
+    "url": "https://www.nytimes.com/2026/01/08/us/politics/trump-interview-venezuela.html",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___www_nytimes_com_2026_01_08_us_politics_trump_interview_venezuela_html_786847.png"
+  },
+  {
+    "url": "https://www.nytimes.com/live/2026/01/08/world/us-venezuela-trump",
+    "success": true,
+    "screenshot_path": ".tmp/screenshots/https___www_nytimes_com_live_2026_01_08_world_us_venezuela_trump_794394.png"
+  },
+  {
+    "url": "https://www.miamiherald.com/opinion/op-ed/article314248973.html",
+    "success": false,
+    "error": "Navigation timeout of 60000 ms exceeded"
+  }
+]

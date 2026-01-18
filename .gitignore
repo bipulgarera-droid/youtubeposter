@@ -17,8 +17,6 @@ venv/
 ENV/
 
 # Temporary files
-.tmp/
-*.tmp
 *.log
 
 # IDE

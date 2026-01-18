@@ -126,6 +126,17 @@ ANTI-REPETITION (CRITICAL):
 - If you explained a mechanism in an earlier beat, reference it briefly, don't re-explain
 - Each beat should feel like PROGRESS, not circling back
 
+FORWARD MOMENTUM (ESSENTIAL):
+- If you've explained a concept, DON'T explain it again. Reference it with a quick callback: "Remember the Bolivar Black Hole?" then MOVE ON.
+- Every paragraph must advance the story. Ask yourself: "Does this add NEW information?" If no, delete it.
+- Transitions should push forward: "But that was just the beginning..." not "As we discussed earlier..."
+- The viewer has ALREADY HEARD the previous sections. Don't summarize. Don't remind. PROGRESS.
+- If two sections feel similar, CUT one and make the other DEEPER with fresh details.
+
+PACING EXAMPLES (match this density):
+- BAD: "This creates a vicious cycle. The cycle works like this. First, the government..." (too slow, repeats)
+- GOOD: "The cycle is brutal. Deficit. Print. Devalue. Your savings evaporate in months." (punchy, forward)
+
 FORBIDDEN:
 - NEVER mention "AI voice", "algorithm", "channel", "subscribers", or "viewers"
 - NEVER say "join me", "in this video", "welcome back", "click subscribe"
@@ -232,11 +243,13 @@ RESEARCH DATA:
 {STYLE_GUIDE}
 
 === ANTI-REPETITION RULES (CRITICAL - VIOLATIONS WILL RUIN THE SCRIPT) ===
-1. NEVER repeat any statistic, date, percentage, or fact that was mentioned in PREVIOUSLY COVERED sections above
-2. If a number like "75% decline" or a date like "January 3rd" was used before, DO NOT use it again - find a NEW angle
-3. Each beat must introduce FRESH information and perspectives, not restate earlier points
-4. If you feel the urge to say "As we mentioned" or "Remember when we said" - STOP. Find something new instead.
-5. The viewer has already heard earlier sections. Assume they remember. Move the story FORWARD.
+1. NEVER repeat any statistic, date, percentage, or fact from PREVIOUSLY COVERED sections
+2. If a number was used before, find a NEW angle or skip that data point entirely
+3. This beat must be 100% NEW information. If you feel yourself summarizing earlier beats, STOP.
+4. BANNED phrases: "As we mentioned", "Remember when", "Earlier we discussed", "This is the X we talked about"
+5. The viewer remembers. Don't remind them. PROGRESS the story.
+6. If your beat feels like it overlaps with an earlier section, CUT the overlap and go DEEPER into something fresh.
+7. Ask yourself: "Would a viewer skip this paragraph because they've heard it before?" If yes, DELETE IT.
 
 === QUALITY GUIDELINES (MATCH THIS STYLE) ===
 1. Create NAMED CONCEPTS with vivid names that stick in memory:
