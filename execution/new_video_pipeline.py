@@ -749,14 +749,49 @@ class NewVideoPipeline:
         """
         Create title using title_style patterns.
         If topic already has parenthetical (e.g., from trend_scanner), return as-is.
+        If topic is a headline (long, contains verbs), clean it up instead of country pattern.
         """
         # If already formatted with parenthetical, return as-is
         if '(' in topic and topic.strip().endswith(')'):
             return topic
         
-        # Otherwise, wrap with appropriate pattern based on content
         topic_lower = topic.lower()
         
+        # Detect if this is a HEADLINE (not a country/simple topic)
+        # Headlines are long, contain verbs/action words, or have multiple capital words
+        headline_indicators = ["after", "amid", "as", "before", "while", "when", "says", "warns", 
+                               "soar", "surge", "plunge", "crash", "rise", "fall", "jump", "drop",
+                               "threat", "deal", "talks", "vote", "plan", "policy", "reform"]
+        is_headline = (
+            len(topic.split()) > 6 or  # Long = likely headline
+            any(w in topic_lower for w in headline_indicators) or
+            sum(1 for word in topic.split() if word[0].isupper()) > 3  # Many capitalized words
+        )
+        
+        if is_headline:
+            # Extract the core subject for a cleaner title
+            # e.g. "Junk Debt Sales Soar in Europe After Trump Tariff Threat Recedes"
+            # → "The European Junk Debt Surge (Why It Matters)"
+            
+            # Try to extract a country/region
+            regions = ["europe", "european", "asia", "asian", "america", "american", "china", 
+                       "chinese", "uk", "british", "france", "french", "germany", "german"]
+            found_region = None
+            for r in regions:
+                if r in topic_lower:
+                    found_region = r.title()
+                    break
+            
+            # Try to extract the core subject (first few significant words)
+            words = [w for w in topic.split() if w.lower() not in ["the", "a", "an", "in", "of", "after", "before", "as", "amid"]]
+            core_subject = " ".join(words[:4]) if len(words) > 4 else " ".join(words)
+            
+            if found_region:
+                return f"The {found_region} {core_subject} (Why It Matters)"
+            else:
+                return f"The {core_subject} (And Why It Matters To You)"
+        
+        # For simple topics (likely country names or single concepts)
         if any(w in topic_lower for w in ["crisis", "collapse", "failing", "broken", "dying"]):
             return f"Why {topic}'s Economy is COLLAPSING (The Hidden Truth)"
         elif any(w in topic_lower for w in ["rich", "success", "boom", "miracle"]):
@@ -764,7 +799,7 @@ class NewVideoPipeline:
         elif any(w in topic_lower for w in ["poor", "poorer", "decline"]):
             return f"Why {topic} is POORER Than You Think (The Economic Truth)"
         else:
-            # Default: The REAL TRUTH pattern
+            # Default: The REAL TRUTH pattern - only for country-like topics
             return f"The REAL TRUTH About {topic}'s Economy (Here's Why)"
     
     async def _regenerate_title(self):

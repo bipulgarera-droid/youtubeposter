@@ -109,7 +109,7 @@ def scan_trending_topics(category: str = "economics") -> List[Dict]:
 def _search_news(query: str) -> List[Dict]:
     """Search news using Serper API."""
     if not SERPER_API_KEY:
-        print("Warning: SERPER_API_KEY not set")
+        print("❌ SERPER_API_KEY not set")
         return []
     
     url = "https://google.serper.dev/news"
@@ -127,12 +127,19 @@ def _search_news(query: str) -> List[Dict]:
     
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
-        response.raise_for_status()
         data = response.json()
+        
+        # Check for credit error
+        if data.get("message") == "Not enough credits" or data.get("statusCode") == 400:
+            print(f"❌ Serper API: No credits remaining")
+            return []
+        
+        response.raise_for_status()
         return data.get("news", [])
     except Exception as e:
         print(f"Serper search error: {e}")
         return []
+
 
 
 def _extract_topics(news_items: List[Dict]) -> List[Dict]:
