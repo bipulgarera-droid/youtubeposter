@@ -49,6 +49,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# STARTUP CHECK
+print("="*50)
+print("🤖 TELEGRAM BOT STARTING - DEPLOYMENT VERSION: v2.1 (Serper Fix)")
+print("="*50)
+
 # Bot token
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
