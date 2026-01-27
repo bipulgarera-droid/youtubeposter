@@ -13,6 +13,10 @@ import requests
 from typing import Dict, List, Optional
 from datetime import datetime
 import google.generativeai as genai
+from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv()
 
 # Import article content fetcher (uses Camoufox or requests fallback)
 try:

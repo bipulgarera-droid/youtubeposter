@@ -13,6 +13,10 @@ import json
 import requests
 from typing import List, Dict, Optional
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv()
 
 # Load API key
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY", "")
