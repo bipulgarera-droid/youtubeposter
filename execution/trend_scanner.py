@@ -509,20 +509,71 @@ def _generate_dramatic_title(headline: str, country: Optional[str], text: str) -
             return f"Why Invading {country} is IMPOSSIBLE (It's Not the Army)"
     
     # =================================================
-    # DEFAULT: The REAL TRUTH About X's Economy
+    # PATTERN 19: The New X (How Y is Changing)
+    # =================================================
+    if any(w in text_lower for w in ["new", "future", "shift", "change", "transform"]):
+        if country:
+            hooks = [
+                "The Future of Money",
+                "The New World Order",
+                "A Global Shift",
+                "The Great Reset"
+            ]
+            return f"The New {country} (And Why It Scares The World)"
+
+    # =================================================
+    # PATTERN 20: Why X is Buying Y (The Z Strategy)
+    # =================================================
+    if any(w in text_lower for w in ["buy", "buying", "acquisition", "deal", "purchase"]):
+         if country:
+            return f"Why {country} is Buying Everything (The Hidden Strategy)"
+
+    # =================================================
+    # PATTERN 21: The X Gamble (High Stakes)
+    # =================================================
+    if any(w in text_lower for w in ["gamble", "bet", "risk", "stake"]):
+        if country:
+            return f"The {country} Gamble (Why They Went All In)"
+            
+    # =================================================
+    # PATTERN 22: Tech/AI Specific
+    # =================================================
+    if any(w in text_lower for w in ["ai", "chip", "tech", "semiconductor", "huawei"]):
+        if country:
+            return f"How {country} is Winning the Tech War (The AI Strategy)"
+
+    # =================================================
+    # PATTERN 23: Manufacturing/Industry
+    # =================================================
+    if any(w in text_lower for w in ["factory", "manufacturing", "industry", "made in"]):
+        if country:
+            return f"Why {country} is the World's Factory (For Now)"
+
+     # =================================================
+    # PATTERN 24: Specific Commodity (Gold, Lithium, etc)
+    # =================================================
+    commodities = ["gold", "lithium", "copper", "rare earth", "coltan"]
+    for comm in commodities:
+        if comm in text_lower:
+            if country:
+                 return f"The {country} {comm.title()} War (The Race for Resources)"
+
+    # =================================================
+    # DEFAULT: More variety in fallback
     # =================================================
     if country:
-        hooks = [
-            "The Hidden Crisis",
-            "The Economic Truth",
-            "Here's Why",
-            "The 5 Fatal Flaws"
+        patterns = [
+            f"The REAL TRUTH About {country}'s Economy (Here's Why)",
+            f"Why Everyone is Wrong About {country} (The Evidence)",
+            f"The Hidden Crisis in {country} (Nobody is Talking About This)",
+            f"{country}: The Economic Truth (Deep Dive)",
+            f"What They Won't Tell You About {country} (The Reality)",
+             f"The {country} Economy Explained (The Good, The Bad, The Ugly)"
         ]
-        return f"The REAL TRUTH About {country}'s Economy ({random.choice(hooks)})"
+        return random.choice(patterns)
     
     # Fallback
     return headline[:60]
-
 
 def _extract_subject(headline: str) -> str:
     """Extract main subject from headline for 'The DEATH of X' format."""
