@@ -42,6 +42,9 @@ from execution.new_video_pipeline import (
     remove_pipeline
 )
 
+# Import viral video discovery
+from execution.youtube_search import discover_videos
+
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -58,7 +61,7 @@ print("="*50)
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 # Conversation states
-CHOOSING_MODE, WAITING_URL, CHOOSING_LENGTH, WAITING_SEARCH_KEYWORD, CHOOSING_NEWS_ARTICLE, CHOOSING_JOB_TO_CANCEL, CHOOSING_PIPELINE_MODE, NEWVIDEO_FLOW = range(8)
+CHOOSING_MODE, WAITING_URL, CHOOSING_LENGTH, WAITING_SEARCH_KEYWORD, CHOOSING_NEWS_ARTICLE, CHOOSING_JOB_TO_CANCEL, CHOOSING_PIPELINE_MODE, NEWVIDEO_FLOW, WAITING_VIRAL_TOPIC = range(9)
 
 # Length options
 LENGTH_OPTIONS = [
@@ -74,6 +77,7 @@ def get_main_menu_keyboard():
     """Main menu keyboard."""
     keyboard = [
         [InlineKeyboardButton("🎬 NEW VIDEO (Research-First)", callback_data="mode_newvideo")],
+        [InlineKeyboardButton("🔥 Find Viral Videos", callback_data="mode_viral")],
         [InlineKeyboardButton("─────── Legacy Options ───────", callback_data="noop")],
         [InlineKeyboardButton("📺 Reference Video (YouTube URL)", callback_data="mode_video")],
         [InlineKeyboardButton("📰 News Article", callback_data="mode_news")],
@@ -245,6 +249,15 @@ async def mode_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         context.user_data['pipeline'] = pipeline
         await pipeline.start()
         return NEWVIDEO_FLOW
+    
+    elif mode == "viral":
+        await query.edit_message_text(
+            "🔥 *Find Viral Videos*\n\n"
+            "Enter a topic or keyword to find high-performing videos:\n"
+            "_(Example: 'silver investing', 'AI future', 'economy collapse')_",
+            parse_mode='Markdown'
+        )
+        return WAITING_VIRAL_TOPIC
 
 
 async def receive_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -415,6 +428,63 @@ async def length_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         context.user_data.clear()
         return ConversationHandler.END
+
+
+async def receive_viral_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle viral video topic search."""
+    topic = update.message.text.strip()
+    
+    await update.message.reply_text(f"🔥 Searching for viral videos about '{topic}'...")
+    
+    try:
+        result = discover_videos(
+            query=topic,
+            min_multiplier=1.0,
+            days=30,
+            max_results=50,
+            min_views=10000,
+            min_duration_minutes=5
+        )
+        
+        videos = result.get('videos', [])
+        
+        if not videos:
+            await update.message.reply_text(
+                f"❌ No high-multiplier videos found for '{topic}'.\n\n"
+                "Try a broader or different keyword, or use /start to go back.",
+                reply_markup=get_main_menu_keyboard()
+            )
+            return CHOOSING_MODE
+        
+        # Format results
+        response = f"🔥 *Top Viral Videos for '{topic}'*\n\n"
+        
+        for i, video in enumerate(videos[:5]):
+            title = video.get('title', 'No title')[:50]
+            views = video.get('view_count', 0)
+            subs = video.get('subscriber_count', 0)
+            multiplier = video.get('multiplier', 0)
+            video_id = video.get('video_id', '')
+            
+            views_str = f"{views:,}" if views < 1000000 else f"{views/1000000:.1f}M"
+            subs_str = f"{subs:,}" if subs < 1000000 else f"{subs/1000000:.1f}M"
+            
+            response += f"*{i+1}. {title}...*\n"
+            response += f"   👀 {views_str} views | 👥 {subs_str} subs | 📈 {multiplier}x\n"
+            response += f"   🔗 https://youtube.com/watch?v={video_id}\n\n"
+        
+        response += f"_Found {len(videos)} videos total. Showing top 5._"
+        
+        await update.message.reply_text(response, parse_mode='Markdown', reply_markup=get_main_menu_keyboard())
+        return CHOOSING_MODE
+        
+    except Exception as e:
+        logger.error(f"Viral video search error: {e}")
+        await update.message.reply_text(
+            f"❌ Search failed: {str(e)}\n\nUse /start to try again.",
+            reply_markup=get_main_menu_keyboard()
+        )
+        return CHOOSING_MODE
 
 
 async def receive_search_keyword(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -733,6 +803,9 @@ def main():
             ],
             WAITING_SEARCH_KEYWORD: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_keyword),
+            ],
+            WAITING_VIRAL_TOPIC: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_viral_topic),
             ],
             CHOOSING_NEWS_ARTICLE: [
                 CallbackQueryHandler(article_selected, pattern="^article_"),
