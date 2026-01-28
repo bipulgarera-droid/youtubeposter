@@ -271,6 +271,18 @@ Return ONLY valid JSON."""
     # Fallback: simple round-robin assignment
     print("      ⚠️ Using fallback outline (round-robin)")
     fallback = {"sections": []}
+    
+    # Guard against empty articles list
+    if not articles or len(articles) == 0:
+        print("      ⚠️ No articles available, using empty outline")
+        for section in sections:
+            fallback["sections"].append({
+                "section": section["title"],
+                "assigned_sources": [],
+                "key_facts": []
+            })
+        return fallback
+    
     articles_per_section = max(3, len(articles) // len(sections))
     for i, section in enumerate(sections):
         start_idx = (i * articles_per_section) % len(articles)

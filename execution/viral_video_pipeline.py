@@ -64,59 +64,95 @@ class ViralVideoPipeline:
         else:
             self.send_message(message)
     
-    async def run(self) -> Dict:
-        """Execute the full pipeline."""
+    def checkpoint_path(self) -> str:
+        """Get checkpoint file path for this video."""
+        from pathlib import Path
+        checkpoint_dir = Path(".tmp/viral_pipeline")
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        return str(checkpoint_dir / f"{self.video_id}_checkpoint.json")
+    
+    def save_checkpoint(self, step: str):
+        """Save current state to checkpoint file."""
+        import json
+        self.data["last_completed_step"] = step
         try:
-            # Step 1: Get original video info
-            await self.log("📊 Fetching original video details...")
-            await self.fetch_video_info()
+            with open(self.checkpoint_path(), 'w') as f:
+                json.dump(self.data, f, indent=2, default=str)
+            print(f"      💾 Checkpoint saved: {step}")
+        except Exception as e:
+            print(f"      ⚠️ Checkpoint save failed: {e}")
+    
+    def load_checkpoint(self) -> bool:
+        """Load checkpoint if exists. Returns True if loaded."""
+        import json
+        from pathlib import Path
+        try:
+            checkpoint_file = Path(self.checkpoint_path())
+            if checkpoint_file.exists():
+                with open(checkpoint_file) as f:
+                    self.data = json.load(f)
+                print(f"      📂 Checkpoint loaded: {self.data.get('last_completed_step', 'unknown')}")
+                return True
+        except Exception as e:
+            print(f"      ⚠️ Checkpoint load failed: {e}")
+        return False
+    
+    def clear_checkpoint(self):
+        """Remove checkpoint file after successful completion."""
+        from pathlib import Path
+        try:
+            Path(self.checkpoint_path()).unlink(missing_ok=True)
+        except:
+            pass
+    
+    async def run(self, resume: bool = True) -> Dict:
+        """Execute the full pipeline with checkpointing."""
+        try:
+            # Try to load checkpoint
+            last_step = None
+            if resume and self.load_checkpoint():
+                last_step = self.data.get("last_completed_step")
+                await self.log(f"📂 Resuming from checkpoint: {last_step}")
             
-            # Step 2: Transcribe
-            await self.log("📝 Transcribing video...")
-            await self.transcribe()
+            steps = [
+                ("fetch_video_info", "📊 Fetching original video details...", self.fetch_video_info),
+                ("transcribe", "📝 Transcribing video...", self.transcribe),
+                ("research", "🔍 Researching to make it 30% better...", self.research),
+                ("generate_script", "✍️ Writing improved script...", self.generate_improved_script),
+                ("generate_metadata", "📋 Creating similar title/description/tags...", self.generate_metadata),
+                ("analyze_thumbnail", "🖼️ Analyzing thumbnail elements...", self.analyze_thumbnail),
+                ("generate_audio", "🎙️ Generating voiceover...", self.generate_audio),
+                ("generate_images", "🎨 Creating visuals...", self.generate_images),
+                ("create_video", "🎬 Stitching video...", self.create_video),
+                ("upload", "📤 Uploading to YouTube...", self.upload),
+            ]
             
-            # Step 3: Research deeper
-            await self.log("🔍 Researching to make it 30% better...")
-            await self.research()
+            # Find starting point
+            start_idx = 0
+            if last_step:
+                for i, (step_name, _, _) in enumerate(steps):
+                    if step_name == last_step:
+                        start_idx = i + 1  # Start from NEXT step
+                        break
             
-            # Step 4: Generate improved script
-            await self.log("✍️ Writing improved script...")
-            await self.generate_improved_script()
+            # Execute steps
+            for step_name, step_msg, step_func in steps[start_idx:]:
+                await self.log(step_msg)
+                await step_func()
+                self.save_checkpoint(step_name)
             
-            # Step 5: Generate similar metadata
-            await self.log("📋 Creating similar title/description/tags...")
-            await self.generate_metadata()
-            
-            # Step 6: Analyze thumbnail
-            await self.log("🖼️ Analyzing thumbnail elements...")
-            await self.analyze_thumbnail()
-            
-            # Step 7: Generate audio
-            await self.log("🎙️ Generating voiceover...")
-            audio_result = await self.generate_audio()
-            
-            # Step 8: Generate images
-            await self.log("🎨 Creating visuals...")
-            images_result = await self.generate_images()
-            
-            # Step 9: Create video
-            await self.log("🎬 Stitching video...")
-            video_result = await self.create_video()
-            
-            # Step 10: Upload to YouTube
-            await self.log("📤 Uploading to YouTube...")
-            upload_result = await self.upload()
-            
-            await self.log(f"✅ Video uploaded! URL: {upload_result.get('url', 'N/A')}")
+            await self.log(f"✅ Video uploaded! URL: {self.data.get('upload_result', {}).get('url', 'N/A')}")
+            self.clear_checkpoint()
             
             return {
                 "success": True,
-                "video_url": upload_result.get("url"),
+                "video_url": self.data.get("upload_result", {}).get("url"),
                 "data": self.data
             }
             
         except Exception as e:
             await self.log(f"❌ Pipeline failed: {str(e)}")
+            await self.log(f"💡 Use the same video to resume from checkpoint")
             return {"success": False, "error": str(e)}
     
     async def fetch_video_info(self):
