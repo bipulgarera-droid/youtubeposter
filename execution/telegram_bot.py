@@ -45,6 +45,9 @@ from execution.new_video_pipeline import (
 # Import viral video discovery
 from execution.youtube_search import discover_videos
 
+# Import viral video cloning pipeline
+from execution.viral_video_pipeline import run_viral_pipeline
+
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -54,14 +57,14 @@ logger = logging.getLogger(__name__)
 
 # STARTUP CHECK
 print("="*50)
-print("🤖 TELEGRAM BOT STARTING - DEPLOYMENT VERSION: v2.1 (Serper Fix)")
+print("🤖 TELEGRAM BOT STARTING - DEPLOYMENT VERSION: v2.2 (Viral Clone)")
 print("="*50)
 
 # Bot token
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 # Conversation states
-CHOOSING_MODE, WAITING_URL, CHOOSING_LENGTH, WAITING_SEARCH_KEYWORD, CHOOSING_NEWS_ARTICLE, CHOOSING_JOB_TO_CANCEL, CHOOSING_PIPELINE_MODE, NEWVIDEO_FLOW, WAITING_VIRAL_TOPIC = range(9)
+CHOOSING_MODE, WAITING_URL, CHOOSING_LENGTH, WAITING_SEARCH_KEYWORD, CHOOSING_NEWS_ARTICLE, CHOOSING_JOB_TO_CANCEL, CHOOSING_PIPELINE_MODE, NEWVIDEO_FLOW, WAITING_VIRAL_TOPIC, CHOOSING_VIRAL_VIDEO = range(10)
 
 # Length options
 LENGTH_OPTIONS = [
@@ -457,27 +460,40 @@ async def receive_viral_topic(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return CHOOSING_MODE
         
-        # Format results
+        # Store videos in context for later selection
+        context.user_data['viral_videos'] = videos[:5]
+        
+        # Format results with selection buttons
         response = f"🔥 *Top Viral Videos for '{topic}'*\n\n"
         
+        keyboard = []
         for i, video in enumerate(videos[:5]):
-            title = video.get('title', 'No title')[:50]
+            title = video.get('title', 'No title')[:45]
             views = video.get('view_count', 0)
-            subs = video.get('subscriber_count', 0)
             multiplier = video.get('multiplier', 0)
             video_id = video.get('video_id', '')
             
             views_str = f"{views:,}" if views < 1000000 else f"{views/1000000:.1f}M"
-            subs_str = f"{subs:,}" if subs < 1000000 else f"{subs/1000000:.1f}M"
             
             response += f"*{i+1}. {title}...*\n"
-            response += f"   👀 {views_str} views | 👥 {subs_str} subs | 📈 {multiplier}x\n"
-            response += f"   🔗 https://youtube.com/watch?v={video_id}\n\n"
+            response += f"   👀 {views_str} views | 📈 {multiplier}x\n\n"
+            
+            # Add selection button
+            keyboard.append([InlineKeyboardButton(
+                f"▶️ Clone #{i+1}: {title[:25]}...",
+                callback_data=f"clone_{video_id}"
+            )])
         
-        response += f"_Found {len(videos)} videos total. Showing top 5._"
+        keyboard.append([InlineKeyboardButton("🔙 Back to Menu", callback_data="back_main")])
         
-        await update.message.reply_text(response, parse_mode='Markdown', reply_markup=get_main_menu_keyboard())
-        return CHOOSING_MODE
+        response += "_Select a video to clone and improve:_"
+        
+        await update.message.reply_text(
+            response, 
+            parse_mode='Markdown', 
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return CHOOSING_VIRAL_VIDEO
         
     except Exception as e:
         logger.error(f"Viral video search error: {e}")
@@ -486,6 +502,85 @@ async def receive_viral_topic(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=get_main_menu_keyboard()
         )
         return CHOOSING_MODE
+
+
+async def handle_clone_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle viral video selection for cloning."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "back_main":
+        await query.edit_message_text(
+            "🎬 *Video Generator Bot*\n\n"
+            "What type of video do you want to create today?",
+            parse_mode='Markdown',
+            reply_markup=get_main_menu_keyboard()
+        )
+        return CHOOSING_MODE
+    
+    # Extract video ID from callback
+    video_id = query.data.replace("clone_", "")
+    
+    # Find the video in stored list
+    videos = context.user_data.get('viral_videos', [])
+    selected_video = None
+    for v in videos:
+        if v.get('video_id') == video_id:
+            selected_video = v
+            break
+    
+    if not selected_video:
+        await query.edit_message_text("❌ Video not found. Please try again with /start")
+        return CHOOSING_MODE
+    
+    # Start the cloning pipeline
+    await query.edit_message_text(
+        f"🚀 *Starting Viral Video Clone Pipeline*\n\n"
+        f"📺 Original: {selected_video.get('title', 'Unknown')[:50]}...\n"
+        f"👀 Views: {selected_video.get('view_count', 0):,}\n"
+        f"📈 Multiplier: {selected_video.get('multiplier', 0)}x\n\n"
+        "_This will take several minutes. I'll send updates as we progress..._",
+        parse_mode='Markdown'
+    )
+    
+    chat_id = update.effective_chat.id
+    
+    async def send_progress(message):
+        try:
+            await context.bot.send_message(chat_id, message)
+        except Exception as e:
+            logger.error(f"Progress message failed: {e}")
+    
+    # Run the pipeline
+    try:
+        result = await run_viral_pipeline(video_id, send_progress)
+        
+        if result.get("success"):
+            await context.bot.send_message(
+                chat_id,
+                f"✅ *Video Created Successfully!*\n\n"
+                f"📺 Title: {result.get('data', {}).get('title', 'N/A')}\n"
+                f"🔗 URL: {result.get('video_url', 'Uploading...')}\n\n"
+                "Your improved clone is ready!",
+                parse_mode='Markdown',
+                reply_markup=get_main_menu_keyboard()
+            )
+        else:
+            await context.bot.send_message(
+                chat_id,
+                f"❌ Pipeline failed: {result.get('error', 'Unknown error')}\n\n"
+                "Use /start to try again.",
+                reply_markup=get_main_menu_keyboard()
+            )
+    except Exception as e:
+        logger.error(f"Clone pipeline error: {e}")
+        await context.bot.send_message(
+            chat_id,
+            f"❌ Pipeline error: {str(e)}",
+            reply_markup=get_main_menu_keyboard()
+        )
+    
+    return CHOOSING_MODE
 
 
 async def receive_search_keyword(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -807,6 +902,10 @@ def main():
             ],
             WAITING_VIRAL_TOPIC: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_viral_topic),
+            ],
+            CHOOSING_VIRAL_VIDEO: [
+                CallbackQueryHandler(handle_clone_selection, pattern="^clone_"),
+                CallbackQueryHandler(main_menu, pattern="^back_main$"),
             ],
             CHOOSING_NEWS_ARTICLE: [
                 CallbackQueryHandler(article_selected, pattern="^article_"),
