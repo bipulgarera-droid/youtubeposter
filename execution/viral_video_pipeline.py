@@ -27,9 +27,9 @@ from execution.youtube_video_info import get_video_details
 from execution.transcribe_video import transcribe_video
 from execution.research_agent import deep_research, format_research_for_script
 from execution.generate_script import generate_script
-from execution.generate_audio import generate_audio
-from execution.generate_ai_images import generate_images_for_script
-from execution.generate_video import create_video
+from execution.generate_audio import generate_audio_from_script, generate_all_audio
+from execution.generate_ai_images import generate_images_for_script, split_script_to_chunks
+from execution.generate_video import build_video_from_chunks
 from execution.youtube_upload import upload_video
 from execution.storage_helper import upload_to_supabase, get_supabase_url
 
@@ -264,7 +264,12 @@ Return ONLY valid JSON."""
     
     async def generate_audio(self):
         """Generate voiceover from script."""
-        result = generate_audio(self.data["script"], output_dir=".tmp/viral_pipeline")
+        from pathlib import Path
+        output_dir = Path(".tmp/viral_pipeline")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        result = generate_all_audio(self.data["script"], str(output_dir))
+        self.data["audio_result"] = result
         return result
     
     async def generate_images(self):
@@ -277,12 +282,32 @@ Return ONLY valid JSON."""
     
     async def create_video(self):
         """Stitch audio + images into video."""
-        result = create_video(
-            audio_path=".tmp/viral_pipeline/audio.mp3",
-            images_dir=".tmp/viral_pipeline/images",
-            output_path=".tmp/viral_pipeline/output.mp4"
-        )
-        self.data["output_path"] = ".tmp/viral_pipeline/output.mp4"
+        # Build chunks structure for video builder
+        from pathlib import Path
+        
+        audio_result = self.data.get("audio_result", {})
+        audio_files = audio_result.get("audio_files", [])
+        
+        images_dir = Path(".tmp/viral_pipeline/images")
+        image_files = sorted(images_dir.glob("*.png")) if images_dir.exists() else []
+        
+        chunks = []
+        script_chunks = split_script_to_chunks(self.data["script"])
+        
+        for i, chunk_text in enumerate(script_chunks):
+            audio_file = audio_files[i] if i < len(audio_files) else None
+            image_file = image_files[i] if i < len(image_files) else None
+            
+            chunks.append({
+                "id": i,
+                "text": chunk_text,
+                "audio_path": audio_file.get("path") if audio_file else None,
+                "screenshot_path": str(image_file) if image_file else None
+            })
+        
+        result = build_video_from_chunks(chunks)
+        if result.get("success"):
+            self.data["output_path"] = result.get("output_path", ".tmp/final_videos/final_video.mp4")
         return result
     
     async def upload(self):
