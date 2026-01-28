@@ -143,9 +143,10 @@ def get_channel_subscribers(youtube, channel_ids: list) -> dict:
     return subscribers
 
 def filter_by_multiplier(videos: list, video_stats: dict, channel_subs: dict, 
-                        min_multiplier: float, min_views: int = 0, min_duration_sec: int = 0) -> list:
+                        min_multiplier: float, min_views: int = 0, min_duration_sec: int = 0,
+                        max_subs: int = 0) -> list:
     """
-    Filter videos by view-to-subscriber multiplier, min views, and duration.
+    Filter videos by view-to-subscriber multiplier, min views, duration, and max subs.
     Returns list of videos meeting constraints.
     """
     filtered = []
@@ -168,6 +169,10 @@ def filter_by_multiplier(videos: list, video_stats: dict, channel_subs: dict,
         if not sub_count or sub_count == 0:
             continue
         
+        # Filter by Maximum Subscribers (find smaller channels)
+        if max_subs > 0 and sub_count > max_subs:
+            continue
+        
         multiplier = view_count / sub_count
         
         if multiplier >= min_multiplier:
@@ -183,7 +188,7 @@ def filter_by_multiplier(videos: list, video_stats: dict, channel_subs: dict,
     return filtered
 
 def discover_videos(query: str, min_multiplier: float = 1.0, days: int = 30, max_results: int = 50, 
-                    min_views: int = 0, min_duration_minutes: float = 0.0) -> dict:
+                    min_views: int = 0, min_duration_minutes: float = 0.0, max_subs: int = 0) -> dict:
     """
     Main function to discover high-performing YouTube videos.
     
@@ -194,6 +199,7 @@ def discover_videos(query: str, min_multiplier: float = 1.0, days: int = 30, max
         max_results: Maximum videos to search
         min_views: Minimum view count
         min_duration_minutes: Minimum duration in minutes
+        max_subs: Maximum subscriber count (0 = no limit)
     
     Returns:
         Dict with 'success', 'videos', and 'message' keys
@@ -223,14 +229,15 @@ def discover_videos(query: str, min_multiplier: float = 1.0, days: int = 30, max
         channel_subs = get_channel_subscribers(youtube, channel_ids)
         
         # Step 4: Filter by multiplier and other criteria
-        print(f"Filtering with min_multiplier={min_multiplier}, min_views={min_views}, min_minutes={min_duration_minutes}...")
+        print(f"Filtering with min_multiplier={min_multiplier}, min_views={min_views}, max_subs={max_subs}...")
         filtered_videos = filter_by_multiplier(
             videos, 
             video_stats, 
             channel_subs, 
             min_multiplier,
             min_views=min_views,
-            min_duration_sec=int(min_duration_minutes * 60)
+            min_duration_sec=int(min_duration_minutes * 60),
+            max_subs=max_subs
         )
         
         return {

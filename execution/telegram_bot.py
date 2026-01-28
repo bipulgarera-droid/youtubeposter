@@ -440,10 +440,11 @@ async def receive_viral_topic(update: Update, context: ContextTypes.DEFAULT_TYPE
         result = discover_videos(
             query=topic,
             min_multiplier=1.0,
-            days=30,
+            days=3,  # Only recent videos (last 3 days)
             max_results=50,
             min_views=10000,
-            min_duration_minutes=5
+            min_duration_minutes=5,
+            max_subs=50000  # Small channels only (under 50K subs)
         )
         
         videos = result.get('videos', [])
