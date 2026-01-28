@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
 Video Transcription Script
-Gets transcript directly from YouTube using the Transcript API.
-No audio download needed - fast and reliable.
+Uses Groq Whisper API with yt-dlp audio download.
+Falls back to YouTube Transcript API for videos with existing captions.
 """
 
 import os
 import re
 import json
 import argparse
+import tempfile
+import subprocess
 from dotenv import load_dotenv
-from youtube_transcript_api import YouTubeTranscriptApi
 
 # Load environment variables
 load_dotenv()
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 
 def extract_video_id(url: str) -> str:
@@ -33,40 +36,112 @@ def extract_video_id(url: str) -> str:
     raise ValueError(f"Could not extract video ID from URL: {url}")
 
 
+def download_audio(video_id: str, output_path: str) -> str:
+    """Download audio from YouTube video using yt-dlp."""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    
+    # Use yt-dlp to download audio only
+    cmd = [
+        "yt-dlp",
+        "-x",  # Extract audio
+        "--audio-format", "mp3",
+        "--audio-quality", "5",  # Medium quality (smaller file)
+        "-o", output_path,
+        "--no-playlist",
+        "--quiet",
+        url
+    ]
+    
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        return output_path
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to download audio: {e.stderr.decode()}")
+
+
+def transcribe_with_groq(audio_path: str) -> str:
+    """Transcribe audio using Groq Whisper API."""
+    from groq import Groq
+    
+    client = Groq(api_key=GROQ_API_KEY)
+    
+    with open(audio_path, "rb") as audio_file:
+        transcription = client.audio.transcriptions.create(
+            file=(os.path.basename(audio_path), audio_file.read()),
+            model="whisper-large-v3",
+            response_format="text"
+        )
+    
+    return transcription
+
+
+def try_youtube_transcript_api(video_id: str) -> dict:
+    """Try to get transcript from YouTube's built-in captions first."""
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        
+        ytt_api = YouTubeTranscriptApi()
+        fetched_transcript = ytt_api.fetch(video_id)
+        transcript_data = fetched_transcript.to_raw_data()
+        full_text = ' '.join([segment['text'] for segment in transcript_data])
+        
+        return {
+            'success': True,
+            'text': full_text,
+            'method': 'youtube_captions'
+        }
+    except Exception:
+        return {'success': False}
+
+
 def get_transcript(video_id: str) -> dict:
     """
-    Get transcript using YouTube Transcript API (new v1.2.3 syntax).
-    Returns dict with text and metadata.
+    Get transcript using Groq Whisper API.
+    Downloads audio with yt-dlp, then transcribes with Groq.
     """
     print(f"Fetching transcript for video: {video_id}...")
     
-    # New API syntax (v1.2.3+)
-    ytt_api = YouTubeTranscriptApi()
+    # First try YouTube's built-in captions (fastest, no API cost)
+    yt_result = try_youtube_transcript_api(video_id)
+    if yt_result.get('success'):
+        print("  ✓ Got transcript from YouTube captions")
+        return {
+            'text': yt_result['text'],
+            'word_count': len(yt_result['text'].split()),
+            'method': 'youtube_captions'
+        }
     
-    try:
-        # Fetch transcript - returns a FetchedTranscript object
-        fetched_transcript = ytt_api.fetch(video_id)
-        
-        # Convert to raw data (list of dicts with text, start, duration)
-        transcript_data = fetched_transcript.to_raw_data()
-        
-    except Exception as e:
-        raise RuntimeError(f"Could not fetch transcript: {str(e)}")
+    print("  → YouTube captions unavailable, using Groq Whisper...")
     
-    # Combine all text segments
-    full_text = ' '.join([segment['text'] for segment in transcript_data])
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY not set - cannot transcribe via Whisper")
+    
+    # Download audio to temp file
+    with tempfile.TemporaryDirectory() as tmpdir:
+        audio_path = os.path.join(tmpdir, f"{video_id}.mp3")
+        
+        print("  → Downloading audio...")
+        download_audio(video_id, audio_path)
+        
+        # Check file size (Groq limit is 25MB)
+        file_size = os.path.getsize(audio_path)
+        if file_size > 25 * 1024 * 1024:
+            raise RuntimeError(f"Audio file too large ({file_size / 1024 / 1024:.1f}MB). Groq limit is 25MB.")
+        
+        print(f"  → Transcribing with Groq Whisper ({file_size / 1024 / 1024:.1f}MB)...")
+        transcript_text = transcribe_with_groq(audio_path)
     
     return {
-        'text': full_text,
-        'segments': transcript_data,
-        'word_count': len(full_text.split())
+        'text': transcript_text,
+        'word_count': len(transcript_text.split()),
+        'method': 'groq_whisper'
     }
 
 
 def transcribe_video(video_url: str, keep_audio: bool = False) -> dict:
     """
     Main transcription function.
-    Uses YouTube Transcript API to fetch existing captions.
+    Uses YouTube Transcript API first, falls back to Groq Whisper.
     """
     try:
         video_id = extract_video_id(video_url)
@@ -76,13 +151,14 @@ def transcribe_video(video_url: str, keep_audio: bool = False) -> dict:
     try:
         result = get_transcript(video_id)
         
-        print(f"Transcript fetched: {result['word_count']} words")
+        print(f"  ✓ Transcript fetched: {result['word_count']} words (via {result['method']})")
         
         return {
             'success': True,
             'video_id': video_id,
             'transcript': result['text'],
             'word_count': result['word_count'],
+            'method': result['method'],
             'message': f"Transcript fetched successfully ({result['word_count']} words)"
         }
         
@@ -90,7 +166,7 @@ def transcribe_video(video_url: str, keep_audio: bool = False) -> dict:
         return {
             'success': False,
             'video_id': video_id,
-            'message': f'Failed to get transcript: {str(e)}. This video may not have captions available.'
+            'message': f'Failed to get transcript: {str(e)}'
         }
 
 
