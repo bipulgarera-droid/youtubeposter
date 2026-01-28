@@ -31,7 +31,6 @@ from execution.generate_audio import generate_audio_from_script, generate_all_au
 from execution.generate_ai_images import generate_images_for_script, split_script_to_chunks
 from execution.generate_video import build_video_from_chunks
 from execution.youtube_upload import upload_video
-from execution.storage_helper import upload_to_supabase, get_supabase_url
 
 # Configure Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
