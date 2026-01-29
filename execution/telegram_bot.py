@@ -49,7 +49,8 @@ from execution.youtube_search import discover_videos
 from execution.viral_video_pipeline import (
     create_viral_pipeline,
     get_viral_pipeline,
-    remove_viral_pipeline
+    remove_viral_pipeline,
+    resume_viral_from_cloud
 )
 
 # Configure logging
@@ -836,30 +837,48 @@ async def handle_resume_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         await query.edit_message_text(f"🔄 Resuming viral pipeline for video {video_id}...")
         
-        async def send_progress(message):
+        # Create send functions for the pipeline
+        async def send_message(text):
             try:
-                await context.bot.send_message(chat_id, message)
-            except:
-                pass
+                await context.bot.send_message(chat_id, text, parse_mode='Markdown')
+            except Exception as e:
+                logger.error(f"Send message failed: {e}")
+        
+        async def send_keyboard(text, buttons):
+            try:
+                keyboard = []
+                for row in buttons:
+                    keyboard.append([InlineKeyboardButton(label, callback_data=cb) for label, cb in row])
+                await context.bot.send_message(
+                    chat_id, 
+                    text, 
+                    parse_mode='Markdown',
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            except Exception as e:
+                logger.error(f"Send keyboard failed: {e}")
         
         try:
-            result = await run_viral_pipeline(video_id, send_progress)
+            # Try cloud resume first (downloads images from Supabase)
+            pipeline = await resume_viral_from_cloud(
+                chat_id=chat_id,
+                send_message_func=send_message,
+                send_keyboard_func=send_keyboard,
+                bot=context.bot
+            )
             
-            if result.get("success"):
-                await context.bot.send_message(
-                    chat_id,
-                    f"✅ *Video Created Successfully!*\n\n"
-                    f"📺 Title: {result.get('data', {}).get('title', 'N/A')}\n"
-                    f"🔗 URL: {result.get('video_url', 'Uploading...')}\n\n"
-                    "Your improved clone is ready!",
-                    parse_mode='Markdown'
+            if not pipeline:
+                # Fall back to creating new pipeline from video_id
+                pipeline = create_viral_pipeline(
+                    video_id=video_id,
+                    chat_id=chat_id,
+                    send_message_func=send_message,
+                    send_keyboard_func=send_keyboard,
+                    bot=context.bot
                 )
-            else:
-                await context.bot.send_message(
-                    chat_id,
-                    f"❌ Pipeline failed: {result.get('error', 'Unknown error')}\n\n"
-                    "Use /resume to try again."
-                )
+                # Load local checkpoint if exists
+                pipeline.load_checkpoint()
+                await pipeline.start()
         except Exception as e:
             await context.bot.send_message(chat_id, f"❌ Error: {str(e)}")
     

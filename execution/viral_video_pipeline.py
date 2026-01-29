@@ -3,17 +3,23 @@
 Viral Video Cloning Pipeline with Step-by-Step Approvals
 Creates an improved version of a viral video to appear in suggested videos.
 
+Uses the SAME generation modules as new_video_pipeline:
+- generate_narrative_script() - no headers, TTS-ready
+- generate_outline() - 7-chapter outline with stats
+- storage_helper - Supabase upload for persistence
+
 Flow (with approvals):
 1. Fetch video info → Show original details
-2. Transcribe → Show transcript preview → Wait for approval
-3. Research → Show research → Wait for approval
-4. Generate script → Show script + file → Wait for approval
-5. Select style (Ghibli/Oil Painting)
-6. Generate images → Show samples → Wait for approval
-7. Generate audio + video → Show preview → Wait for approval
-8. Generate metadata → Show title/desc/tags → Wait for approval
-9. Generate thumbnail → Show preview → Wait for approval
-10. Upload → Confirm → Upload
+2. Transcribe → Show transcript preview → Approve
+3. Research → Show research facts → Approve  
+4. Outline → Show 7-chapter outline → Approve
+5. Generate script → Show script + file → Approve
+6. Select style (Ghibli/Oil Painting)
+7. Generate images → Upload to Supabase → Show previews → Approve
+8. Generate video → Show preview → Approve
+9. Generate metadata → Show title/desc/tags → Approve
+10. Generate thumbnail → Show preview → Approve
+11. Upload → Confirm → Upload
 """
 
 import os
@@ -30,11 +36,28 @@ load_dotenv()
 from execution.youtube_video_info import get_video_details
 from execution.transcribe_video import transcribe_video
 from execution.research_agent import deep_research, format_research_for_script
-from execution.generate_script import generate_script
-from execution.generate_audio import generate_audio_from_script, generate_all_audio
+
+# NEW: Use correct generation modules (same as new_video_pipeline)
+from execution.generate_outline import generate_outline, format_outline_for_telegram, format_outline_for_script
+from execution.generate_narrative_script import generate_narrative_script
+
+from execution.generate_audio import generate_all_audio
 from execution.generate_ai_images import generate_images_for_script, split_script_to_chunks
 from execution.generate_video import build_video_from_chunks
 from execution.youtube_upload import upload_video
+
+# Supabase storage for persistence across restarts
+try:
+    from execution.storage_helper import (
+        upload_file, upload_text, upload_state, download_file,
+        get_latest_job_with_assets, download_state, get_job_assets
+    )
+    STORAGE_AVAILABLE = True
+except ImportError:
+    STORAGE_AVAILABLE = False
+    upload_file = None
+    upload_state = None
+    download_file = None
 
 # Configure Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -45,11 +68,11 @@ if GEMINI_API_KEY:
 STYLES = {
     "ghibli_cartoon": {
         "name": "Ghibli Cartoon (Primary)",
-        "description": "Studio Ghibli-inspired animated style. Clean lines, expressive characters, detailed backgrounds. Used in 75% of videos."
+        "description": "Studio Ghibli-inspired animated style. Clean lines, expressive characters, detailed backgrounds."
     },
     "impressionist_oil": {
         "name": "Impressionist Oil Painting",
-        "description": "Classic French impressionist style. Oil painting aesthetic with visible brushstrokes. Muted color palette. Used for European/historical topics."
+        "description": "Classic French impressionist style. Oil painting aesthetic with visible brushstrokes."
     }
 }
 DEFAULT_STYLE = "ghibli_cartoon"
@@ -75,6 +98,9 @@ class ViralVideoPipeline:
         self.send_keyboard = send_keyboard_func
         self.bot = bot
         
+        # Supabase job ID for cloud storage
+        self.supabase_job_id = f"viral_{video_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
         # Output directory
         self.output_dir = f".tmp/viral_pipeline/{video_id}"
         os.makedirs(self.output_dir, exist_ok=True)
@@ -87,18 +113,21 @@ class ViralVideoPipeline:
             "transcript": "",
             "research": {},
             "research_formatted": "",
+            "outline": "",
             "script": "",
             "style": DEFAULT_STYLE,
             "title": "",
             "description": "",
             "tags": [],
             "thumbnail_analysis": {},
-            "images": [],
+            "images": {},
+            "image_urls": [],  # Supabase URLs for resume
             "audio_result": {},
             "video_path": "",
             "subtitled_video_path": "",
             "thumbnail_path": "",
-            "output_dir": self.output_dir
+            "output_dir": self.output_dir,
+            "supabase_job_id": self.supabase_job_id
         }
     
     def checkpoint_path(self) -> str:
@@ -108,14 +137,24 @@ class ViralVideoPipeline:
         return str(checkpoint_dir / f"{self.video_id}_checkpoint.json")
     
     def save_checkpoint(self, step: str):
-        """Save current state to checkpoint file."""
+        """Save state to both local file and Supabase."""
         import json
         self.state["last_completed_step"] = step
+        
+        # Local checkpoint
         try:
             with open(self.checkpoint_path(), 'w') as f:
                 json.dump(self.state, f, indent=2, default=str)
         except Exception as e:
-            print(f"Failed to save checkpoint: {e}")
+            print(f"Failed to save local checkpoint: {e}")
+        
+        # Supabase checkpoint (for cross-restart persistence)
+        if STORAGE_AVAILABLE and upload_state:
+            try:
+                upload_state(self.supabase_job_id, self.state)
+                print(f"✅ State uploaded to Supabase: {self.supabase_job_id}")
+            except Exception as e:
+                print(f"Failed to upload state to Supabase: {e}")
     
     def load_checkpoint(self) -> bool:
         """Load state from checkpoint file if exists."""
@@ -123,6 +162,7 @@ class ViralVideoPipeline:
         try:
             with open(self.checkpoint_path(), 'r') as f:
                 self.state = json.load(f)
+                self.supabase_job_id = self.state.get("supabase_job_id", self.supabase_job_id)
                 return True
         except:
             return False
@@ -136,7 +176,7 @@ class ViralVideoPipeline:
     
     async def start(self):
         """Start the viral cloning pipeline - fetch video info."""
-        await self.send_message("🚀 *Starting Viral Video Clone Pipeline*")
+        await self.send_message("🚀 *Starting Viral Video Clone Pipeline*\n\n_Uses same quality generation as main pipeline_")
         await self.send_message(f"📺 Video ID: `{self.video_id}`")
         
         await self._fetch_video_info()
@@ -164,11 +204,20 @@ class ViralVideoPipeline:
         
         # Research approval
         elif callback_data == "viral_research_approve":
-            await self._generate_script()
+            await self._generate_outline()  # NEW: Go to outline first
             return True
         
         elif callback_data == "viral_research_regen":
             await self._start_research()
+            return True
+        
+        # Outline approval (NEW)
+        elif callback_data == "viral_outline_approve":
+            await self._generate_script()
+            return True
+        
+        elif callback_data == "viral_outline_regen":
+            await self._generate_outline()
             return True
         
         # Script approval
@@ -251,6 +300,9 @@ class ViralVideoPipeline:
             "views": info.get("viewCount", 0)
         }
         
+        # Use original title as our base title
+        self.state["title"] = self.state["original"]["title"]
+        
         # Show original video info
         views = int(self.state["original"]["views"]) if self.state["original"]["views"] else 0
         await self.send_message(
@@ -303,7 +355,7 @@ class ViralVideoPipeline:
     
     async def _start_research(self):
         """Research deeper using transcript and show results."""
-        await self.send_message("🔍 Researching to make it 30% better...")
+        await self.send_message("🔍 Researching topic in depth...")
         
         topic = self.state["original"]["title"]
         
@@ -321,26 +373,22 @@ class ViralVideoPipeline:
         
         self.save_checkpoint("research")
         
-        # Show research summary
-        key_figures = research.get("key_figures", [])[:3]
-        stats = research.get("statistics", [])[:3]
-        news_count = len(research.get("recent_news", []))
+        # Show research facts (same format as new_video_pipeline)
+        raw_facts = research.get("raw_facts", "")
+        display_facts = raw_facts[:1500] if len(raw_facts) > 1500 else raw_facts
         
-        research_preview = (
-            f"🔬 *Research Complete*\n\n"
-            f"*Key Figures:*\n" + "\n".join([f"- {f}" for f in key_figures]) + "\n\n"
-            f"*Statistics:*\n" + "\n".join([f"- {s}" for s in stats]) + "\n\n"
-            f"📰 Found {news_count} related news articles\n\n"
-            "... truncated for display"
+        if not display_facts:
+            display_facts = "Research complete. Key findings compiled."
+        
+        await self.send_message(
+            f"📚 *Research Facts:*\n\n{display_facts}...\n\n"
+            f"📰 Found {len(research.get('recent_news', []))} related articles"
         )
-        
-        await self.send_message(research_preview)
         
         self.state["step"] = "approving_research"
         
-        # Ask for approval
         await self.send_keyboard(
-            "Proceed to script generation?",
+            "Proceed to outline generation?",
             [
                 [("✅ Approve Research", "viral_research_approve")],
                 [("🔄 Regenerate", "viral_research_regen")],
@@ -348,66 +396,110 @@ class ViralVideoPipeline:
             ]
         )
     
-    async def _generate_script(self):
-        """Generate improved script and show for approval."""
-        await self.send_message("✍️ Writing improved script (30% better)...")
+    async def _generate_outline(self):
+        """Generate 7-chapter outline from research (NEW - same as new_video_pipeline)."""
+        await self.send_message("📋 Generating 7-chapter outline...")
         
-        articles = []
-        for news in self.state["research"].get("recent_news", []):
-            articles.append({
-                "title": news.get("title", ""),
-                "content": news.get("content", news.get("snippet", "")),
-                "source": news.get("source", "")
-            })
-        
-        result = generate_script(
-            topic=self.state["original"]["title"],
-            articles=articles,
-            transcript=self.state["transcript"],
-            word_count=4500,
-            channel_focus="Empire Finance",
-            script_mode="improve"
+        result = generate_outline(
+            title=self.state["title"],
+            research=self.state["research"],
+            country=None
         )
         
         if not result.get("success"):
-            await self.send_message(f"❌ Script generation failed: {result.get('message')}")
+            await self.send_message(f"❌ Outline generation failed: {result.get('error')}")
             return
         
-        self.state["script"] = result.get("script", {}).get("raw_text", "")
-        word_count = len(self.state["script"].split())
+        self.state["outline"] = result.get("outline", "")
         
-        self.save_checkpoint("generate_script")
+        self.save_checkpoint("outline")
         
-        # Send script as file for download
-        if self.bot:
-            try:
-                script_path = Path(self.output_dir) / "script.txt"
-                with open(script_path, 'w') as f:
-                    f.write(self.state["script"])
-                
-                with open(script_path, 'rb') as f:
-                    await self.bot.send_document(self.chat_id, f, filename="script.txt", caption="📄 Full script attached for easy copying")
-            except Exception as e:
-                await self.send_message(f"(Could not send file: {e})")
-        
-        await self.send_message(
-            f"📝 *Script Generated*\n\n"
-            f"Word Count: {word_count}\n"
-            f"Title: {self.state['original']['title']}\n\n"
-            f"📄 Full script sent as file above.\n\n"
-            "Approve script?"
-        )
-        
-        self.state["step"] = "approving_script"
+        # Show outline for approval (using same formatter as new_video_pipeline)
+        outline_text = format_outline_for_telegram(result)
         
         await self.send_keyboard(
-            "Approve script?",
+            outline_text,
             [
-                [("✅ Approve Script", "viral_script_approve")],
-                [("🔄 Regenerate", "viral_script_regen")],
+                [("✅ Approve Outline", "viral_outline_approve")],
+                [("🔄 Regenerate", "viral_outline_regen")],
                 [("❌ Cancel", "viral_cancel")]
             ]
         )
+        
+        self.state["step"] = "approving_outline"
+    
+    async def _generate_script(self):
+        """Generate script using generate_narrative_script (NEW - no headers, TTS-ready)."""
+        await self.send_message("✍️ Generating 4,500-word script (~30 min video)...\n\n_Using narrative engine (no headers, TTS-optimized)_")
+        
+        # Combine research + outline for context
+        research_text = format_research_for_script(self.state["research"])
+        outline_context = format_outline_for_script({"success": True, "outline": self.state["outline"]})
+        full_context = research_text + "\n\n" + outline_context
+        
+        try:
+            # Use generate_narrative_script (same as new_video_pipeline)
+            result = generate_narrative_script(
+                research_data=full_context,
+                topic=self.state["title"],
+                target_minutes=30  # 4500 words
+            )
+            
+            if not result or not result.get("full_script"):
+                await self.send_message("❌ Script generation failed. Try regenerating.")
+                return
+            
+            script = result.get("full_script", "")
+            word_count = result.get("total_words", len(script.split()))
+            
+            self.state["script"] = script
+            
+            # Save to file
+            script_path = Path(self.output_dir) / "script.txt"
+            with open(script_path, "w") as f:
+                f.write(script)
+            
+            self.save_checkpoint("generate_script")
+            
+            # Send script as file for download
+            if self.bot:
+                try:
+                    with open(script_path, 'rb') as f:
+                        await self.bot.send_document(
+                            self.chat_id, f, 
+                            filename="script.txt", 
+                            caption="📄 Full script attached (no headers, TTS-ready)"
+                        )
+                except Exception as e:
+                    await self.send_message(f"(Could not send file: {e})")
+            
+            # Upload script to Supabase
+            if STORAGE_AVAILABLE and upload_file:
+                try:
+                    upload_file(str(script_path), self.supabase_job_id, 'scripts', 'script.txt')
+                except Exception as e:
+                    print(f"Failed to upload script to Supabase: {e}")
+            
+            await self.send_message(
+                f"📝 *Script Generated*\n\n"
+                f"Word Count: {word_count}\n"
+                f"Estimated Duration: {word_count // 150} minutes\n\n"
+                f"📄 Full script sent as file above.\n\n"
+                "_No section headers - ready for TTS_"
+            )
+            
+            self.state["step"] = "approving_script"
+            
+            await self.send_keyboard(
+                "Approve script?",
+                [
+                    [("✅ Approve Script", "viral_script_approve")],
+                    [("🔄 Regenerate", "viral_script_regen")],
+                    [("❌ Cancel", "viral_cancel")]
+                ]
+            )
+        except Exception as e:
+            await self.send_message(f"❌ Script generation error: {str(e)}")
     
     async def _select_style(self):
         """Show style options for user to select."""
@@ -432,10 +524,10 @@ class ViralVideoPipeline:
         """Apply selected style and generate images."""
         if style_id in STYLES:
             self.state["style"] = style_id
-            await self.send_message(f"🎨 Style selected: {style_id}")
+            await self.send_message(f"🎨 Style selected: {STYLES[style_id]['name']}")
         else:
             self.state["style"] = DEFAULT_STYLE
-            await self.send_message(f"🎨 Using default style: {DEFAULT_STYLE}")
+            await self.send_message(f"🎨 Using default style: Ghibli Cartoon")
         
         self.save_checkpoint("select_style")
         
@@ -443,42 +535,77 @@ class ViralVideoPipeline:
         await self._generate_images()
     
     async def _generate_images(self):
-        """Generate AI images and show samples for approval."""
-        await self.send_message("🖼️ Generating images...")
+        """Generate AI images and upload to Supabase for persistence."""
+        await self.send_message("🖼️ Generating images...\n\n_Images will be uploaded to cloud for resume capability_")
         
         images_dir = Path(self.output_dir) / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
         
         result = generate_images_for_script(
-            self.state["script"],
+            script=self.state["script"],
             output_dir=str(images_dir),
             style=self.state["style"]
         )
         
-        if not result.get("success"):
-            await self.send_message(f"⚠️ Image generation had issues: {result.get('message', 'Unknown')}")
+        self.state["images"] = result
         
-        # Get generated images
-        image_files = sorted(images_dir.glob("*.png"))
-        self.state["images"] = [str(f) for f in image_files]
+        # Get counts
+        total_chunks = result.get('total_chunks', 0)
+        successful = result.get('successful', 0)
+        failed = result.get('failed', 0)
+        chunks_data = result.get('chunks', [])
+        
+        # Upload images to Supabase for persistence (KEY FEATURE)
+        uploaded_urls = []
+        if STORAGE_AVAILABLE and upload_file:
+            await self.send_message("☁️ Uploading images to cloud storage...")
+            for chunk_result in chunks_data:
+                if chunk_result.get('success') and chunk_result.get('path'):
+                    try:
+                        url = upload_file(
+                            local_path=chunk_result['path'],
+                            job_id=self.supabase_job_id,
+                            step_name='images',
+                            filename=f"chunk_{chunk_result.get('index', 0):03d}.png"
+                        )
+                        if url:
+                            uploaded_urls.append(url)
+                            chunk_result['supabase_url'] = url
+                    except Exception as e:
+                        print(f"Failed to upload image to Supabase: {e}")
+            
+            self.state["image_urls"] = uploaded_urls
+            print(f"✅ Uploaded {len(uploaded_urls)} images to Supabase")
         
         self.save_checkpoint("generate_images")
         
-        # Send sample images (first 3)
-        if self.bot and image_files:
-            for i, img_path in enumerate(image_files[:3]):
-                try:
-                    with open(img_path, 'rb') as f:
-                        await self.bot.send_photo(self.chat_id, f, caption=f"Image {i+1}/{len(image_files)}")
-                except Exception as e:
-                    await self.send_message(f"(Could not send image {i+1}: {e})")
+        # Send sample images to Telegram (first 3)
+        sent_previews = 0
+        if self.bot:
+            for chunk_result in chunks_data[:3]:
+                if chunk_result.get('success') and chunk_result.get('path'):
+                    try:
+                        with open(chunk_result['path'], 'rb') as img_file:
+                            await self.bot.send_photo(
+                                self.chat_id,
+                                img_file,
+                                caption=f"Image {chunk_result.get('index', 0)+1}/{total_chunks}"
+                            )
+                            sent_previews += 1
+                    except Exception as e:
+                        print(f"Failed to send preview: {e}")
         
-        await self.send_message(
-            f"🖼️ *Image Generation Complete*\n\n"
-            f"✅ Generated: {len(image_files)} images\n"
-            f"📷 Previewed: {min(3, len(image_files))} samples above\n\n"
-            "Approve images?"
-        )
+        status_msg = f"🖼️ *Image Generation Complete*\n\n"
+        status_msg += f"✅ Generated: {successful}/{total_chunks} images\n"
+        if failed > 0:
+            status_msg += f"❌ Failed: {failed}\n"
+        if sent_previews > 0:
+            status_msg += f"📸 Previewed: {sent_previews} samples above\n"
+        if uploaded_urls:
+            status_msg += f"☁️ Uploaded to cloud: {len(uploaded_urls)} images\n"
+        status_msg += "\nApprove images?"
+        
+        await self.send_message(status_msg)
         
         self.state["step"] = "approving_images"
         
@@ -492,7 +619,7 @@ class ViralVideoPipeline:
     
     async def _generate_video(self):
         """Generate audio and video, show preview."""
-        await self.send_message("🎬 Generating video...\n\n⏳ This involves generating audio for each chunk and assembling the video. This may take several minutes for longer scripts.")
+        await self.send_message("🎬 Generating video...\n\n⏳ Generating audio and stitching video. This may take several minutes.")
         
         # Generate audio
         await self.send_message("🎙️ Generating voiceover...")
@@ -549,7 +676,7 @@ class ViralVideoPipeline:
     
     async def _generate_metadata(self):
         """Generate similar title, description, tags for approval."""
-        await self.send_message("📋 Creating similar title/description/tags...")
+        await self.send_message("📋 Creating title/description/tags...")
         
         model = genai.GenerativeModel("gemini-2.0-flash")
         
@@ -557,17 +684,16 @@ class ViralVideoPipeline:
         original_desc = self.state["original"]["description"]
         original_tags = self.state["original"]["tags"]
         
-        # Generate similar title
-        title_prompt = f"""Rewrite this YouTube title to be 80% similar but unique enough to avoid duplicate detection.
+        # Generate similar title (keep 80% same)
+        title_prompt = f"""Rewrite this YouTube title to be 80% similar but unique.
 Keep the same structure, hook words, and topic. Change 2-3 words maximum.
 
 Original: {original_title}
 
 Rules:
-- Keep the same emotional hook (DESTROYED, TRUTH, etc.)
+- Keep the same emotional hook
 - Keep the same topic keywords
 - Change word order slightly or use synonyms
-- Must feel like the same video at first glance
 - Max 70 characters
 
 Return ONLY the new title, nothing else."""
@@ -625,9 +751,8 @@ Return the new description (max 500 chars), nothing else."""
         
         prompt = f"""Create a thumbnail text overlay for this video.
 Title: {self.state["title"]}
-Original thumbnail style: worried face, dramatic text overlay
 
-Return ONLY the main text (2-3 words, all caps) that should appear on the thumbnail.
+Return ONLY the main text (2-3 words, all caps) for the thumbnail.
 Examples: "IT'S OVER", "THE TRUTH", "ECONOMY DESTROYED"."""
 
         try:
@@ -638,7 +763,7 @@ Examples: "IT'S OVER", "THE TRUTH", "ECONOMY DESTROYED"."""
         
         self.state["thumbnail_analysis"] = {"main_text": main_text}
         
-        # Generate actual thumbnail
+        # Try to generate actual thumbnail
         try:
             from execution.generate_thumbnail import generate_thumbnail
             
@@ -660,11 +785,11 @@ Examples: "IT'S OVER", "THE TRUTH", "ECONOMY DESTROYED"."""
         if self.bot and self.state.get("thumbnail_path") and os.path.exists(self.state["thumbnail_path"]):
             try:
                 with open(self.state["thumbnail_path"], 'rb') as f:
-                    await self.bot.send_photo(self.chat_id, f, caption="🖼️ Thumbnail Generated\n\nApprove thumbnail?")
+                    await self.bot.send_photo(self.chat_id, f, caption="🖼️ Thumbnail Generated")
             except:
-                await self.send_message("🖼️ Thumbnail generated (could not preview)")
-        else:
-            await self.send_message("🖼️ Thumbnail generated\n\nApprove thumbnail?")
+                pass
+        
+        await self.send_message("🖼️ Thumbnail generated\n\nApprove thumbnail?")
         
         self.state["step"] = "approving_thumbnail"
         
@@ -679,13 +804,11 @@ Examples: "IT'S OVER", "THE TRUTH", "ECONOMY DESTROYED"."""
     async def _prepare_upload(self):
         """Show final confirmation before upload."""
         video_name = Path(self.state.get("video_path", "")).name or "video.mp4"
-        thumb_name = Path(self.state.get("thumbnail_path", "")).name or "thumbnail.jpg"
         
         await self.send_message(
             f"🚀 *Ready to Upload*\n\n"
             f"Title: {self.state['title']}\n"
-            f"Video: `{video_name}`\n"
-            f"Thumbnail: `{thumb_name}`\n\n"
+            f"Video: `{video_name}`\n\n"
             "Upload to YouTube?"
         )
         
@@ -750,35 +873,71 @@ def remove_viral_pipeline(chat_id: int):
     _active_pipelines.pop(chat_id, None)
 
 
-# Legacy function for backwards compatibility
-async def run_viral_pipeline(video_id: str, send_message: Callable = None) -> Dict:
+async def resume_viral_from_cloud(chat_id: int, send_message_func, send_keyboard_func, bot=None) -> Optional[ViralVideoPipeline]:
     """
-    Legacy convenience function - runs without approvals.
-    For approval flow, use create_viral_pipeline() instead.
+    Resume a viral pipeline from Supabase storage.
+    Downloads images from cloud and resumes from image step.
     """
-    # Simple run-through for backwards compatibility
-    print(f"⚠️ run_viral_pipeline() is deprecated. Use create_viral_pipeline() for approval flow.")
+    if not STORAGE_AVAILABLE:
+        return None
     
-    # Create a minimal pipeline that auto-approves
-    class AutoPipeline:
-        def __init__(self):
-            self.video_id = video_id
-            self.send_message = send_message or print
-            self.state = {}
+    try:
+        # Find latest job with images
+        job_id, assets = get_latest_job_with_assets()
         
-        async def log(self, msg):
-            if asyncio.iscoroutinefunction(self.send_message):
-                await self.send_message(msg)
-            else:
-                self.send_message(msg)
-    
-    # This is a simplified version - real usage should use the full pipeline
-    pipeline = AutoPipeline()
-    await pipeline.log("⚠️ Running in legacy mode without approvals. Use /clone command for full experience.")
-    
-    return {"success": False, "error": "Legacy mode not fully supported. Use /clone command."}
+        if not job_id or not assets.get('images'):
+            return None
+        
+        # Extract video_id from job_id (format: viral_{video_id}_{timestamp})
+        parts = job_id.split('_')
+        if len(parts) >= 2:
+            video_id = parts[1]
+        else:
+            video_id = "unknown"
+        
+        # Create pipeline
+        pipeline = ViralVideoPipeline(video_id, chat_id, send_message_func, send_keyboard_func, bot)
+        pipeline.supabase_job_id = job_id
+        
+        # Download state
+        state = download_state(job_id)
+        if state:
+            pipeline.state = state
+        
+        # Download images from Supabase
+        images_dir = Path(pipeline.output_dir) / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        
+        for i, img_path in enumerate(assets.get('images', [])):
+            local_path = images_dir / f"chunk_{i:03d}.png"
+            download_file(img_path, str(local_path))
+        
+        _active_pipelines[chat_id] = pipeline
+        
+        await send_message_func(
+            f"☁️ *Resumed from Cloud*\n\n"
+            f"Job: `{job_id}`\n"
+            f"Downloaded: {len(assets.get('images', []))} images\n\n"
+            "Continuing from image approval step..."
+        )
+        
+        # Go directly to image approval
+        pipeline.state["step"] = "approving_images"
+        await send_keyboard_func(
+            "Resume - Approve images?",
+            [
+                [("✅ Approve Images", "viral_images_approve")],
+                [("🔄 Regenerate", "viral_images_regen")]
+            ]
+        )
+        
+        return pipeline
+        
+    except Exception as e:
+        print(f"Failed to resume from cloud: {e}")
+        return None
 
 
 if __name__ == "__main__":
     print("Usage: Import and use create_viral_pipeline() for approval flow")
-    print("Or use legacy run_viral_pipeline() for auto mode (deprecated)")
+    print("Or use resume_viral_from_cloud() to resume from Supabase images")
