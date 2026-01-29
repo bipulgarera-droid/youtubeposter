@@ -945,14 +945,62 @@ Examples: "IT'S OVER", "THE TRUTH", "ECONOMY DESTROYED"."""
             ]
         )
     
+    def _extract_seo_keywords(self, title: str) -> str:
+        """Extract 2-4 key words from title for SEO filename."""
+        import re
+        # Remove emojis, special chars, keep alphanumeric and spaces
+        clean = re.sub(r'[^\w\s-]', '', title)
+        # Split into words, filter short/common words
+        stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'will', 'be', 'to', 'for', 'of', 'in', 'on', 'with', 'and', 'or', 'how', 'why', 'what'}
+        words = [w for w in clean.split() if w.lower() not in stop_words and len(w) > 2]
+        # Take first 2-4 important words
+        key_words = words[:4] if len(words) >= 4 else words[:max(2, len(words))]
+        # Join with hyphens for filename
+        return '-'.join(key_words) if key_words else 'video'
+    
     async def _prepare_upload(self):
-        """Show final confirmation before upload."""
-        video_name = Path(self.state.get("video_path", "")).name or "video.mp4"
+        """Show final confirmation before upload. Renames files for SEO."""
+        # Extract SEO keywords for filenames
+        seo_filename = self._extract_seo_keywords(self.state["title"])
+        
+        # Rename subtitled video for SEO
+        video_path = self.state.get("subtitled_video_path") or self.state.get("video_path")
+        if video_path and os.path.exists(video_path):
+            video_dir = os.path.dirname(video_path)
+            seo_video_path = os.path.join(video_dir, f"{seo_filename}.mp4")
+            if video_path != seo_video_path:
+                try:
+                    import shutil
+                    shutil.copy2(video_path, seo_video_path)
+                    if self.state.get("subtitled_video_path"):
+                        self.state["subtitled_video_path"] = seo_video_path
+                    else:
+                        self.state["video_path"] = seo_video_path
+                except Exception as e:
+                    print(f"Failed to rename video: {e}")
+        
+        # Rename thumbnail for SEO
+        thumb_path = self.state.get("thumbnail_path")
+        if thumb_path and os.path.exists(thumb_path):
+            thumb_dir = os.path.dirname(thumb_path)
+            ext = os.path.splitext(thumb_path)[1] or '.jpg'
+            seo_thumb_path = os.path.join(thumb_dir, f"{seo_filename}-thumbnail{ext}")
+            if thumb_path != seo_thumb_path:
+                try:
+                    import shutil
+                    shutil.copy2(thumb_path, seo_thumb_path)
+                    self.state["thumbnail_path"] = seo_thumb_path
+                except Exception as e:
+                    print(f"Failed to rename thumbnail: {e}")
+        
+        # Get renamed video name
+        final_video_path = self.state.get("subtitled_video_path") or self.state.get("video_path", "")
+        video_name = Path(final_video_path).name or "video.mp4"
         
         await self.send_message(
-            f"🚀 *Ready to Upload*\n\n"
-            f"Title: {self.state['title']}\n"
-            f"Video: `{video_name}`\n\n"
+            f"🚀 *Ready to Upload*\\n\\n"
+            f"Title: {self.state['title']}\\n"
+            f"Video: `{video_name}` (SEO optimized)\\n\\n"
             "Upload to YouTube?"
         )
         

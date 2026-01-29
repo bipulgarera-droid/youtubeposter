@@ -101,8 +101,9 @@ def generate_chapter_titles(srt_entries: List[Dict], num_chapters: int = 10) -> 
         time_str = seconds_to_youtube_time(seconds)
         full_text += f"[{time_str}] {entry['text']}\n"
     
-    # Limit text for API
-    full_text = full_text[:15000]
+    # Limit text for API (increased from 15000 to support longer videos)
+    # ~60000 chars covers ~45 min of video
+    full_text = full_text[:60000]
     
     prompt = f"""Analyze this video transcript and create {num_chapters} chapter timestamps.
 
