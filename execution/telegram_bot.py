@@ -45,8 +45,12 @@ from execution.new_video_pipeline import (
 # Import viral video discovery
 from execution.youtube_search import discover_videos
 
-# Import viral video cloning pipeline
-from execution.viral_video_pipeline import run_viral_pipeline
+# Import viral video cloning pipeline with approval flow
+from execution.viral_video_pipeline import (
+    create_viral_pipeline,
+    get_viral_pipeline,
+    remove_viral_pipeline
+)
 
 # Configure logging
 logging.basicConfig(
@@ -533,45 +537,50 @@ async def handle_clone_selection(update: Update, context: ContextTypes.DEFAULT_T
         await query.edit_message_text("❌ Video not found. Please try again with /start")
         return CHOOSING_MODE
     
-    # Start the cloning pipeline
+    # Start the cloning pipeline with approval flow
     await query.edit_message_text(
         f"🚀 *Starting Viral Video Clone Pipeline*\n\n"
         f"📺 Original: {selected_video.get('title', 'Unknown')[:50]}...\n"
         f"👀 Views: {selected_video.get('view_count', 0):,}\n"
         f"📈 Multiplier: {selected_video.get('multiplier', 0)}x\n\n"
-        "_This will take several minutes. I'll send updates as we progress..._",
+        "_You will approve each step as we progress..._",
         parse_mode='Markdown'
     )
     
     chat_id = update.effective_chat.id
     
-    async def send_progress(message):
+    # Create send functions for the pipeline
+    async def send_message(text):
         try:
-            await context.bot.send_message(chat_id, message)
+            await context.bot.send_message(chat_id, text, parse_mode='Markdown')
         except Exception as e:
-            logger.error(f"Progress message failed: {e}")
+            logger.error(f"Send message failed: {e}")
     
-    # Run the pipeline
-    try:
-        result = await run_viral_pipeline(video_id, send_progress)
-        
-        if result.get("success"):
+    async def send_keyboard(text, buttons):
+        """Send message with inline keyboard."""
+        try:
+            keyboard = []
+            for row in buttons:
+                keyboard.append([InlineKeyboardButton(label, callback_data=cb) for label, cb in row])
             await context.bot.send_message(
-                chat_id,
-                f"✅ *Video Created Successfully!*\n\n"
-                f"📺 Title: {result.get('data', {}).get('title', 'N/A')}\n"
-                f"🔗 URL: {result.get('video_url', 'Uploading...')}\n\n"
-                "Your improved clone is ready!",
+                chat_id, 
+                text, 
                 parse_mode='Markdown',
-                reply_markup=get_main_menu_keyboard()
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
-        else:
-            await context.bot.send_message(
-                chat_id,
-                f"❌ Pipeline failed: {result.get('error', 'Unknown error')}\n\n"
-                "Use /start to try again.",
-                reply_markup=get_main_menu_keyboard()
-            )
+        except Exception as e:
+            logger.error(f"Send keyboard failed: {e}")
+    
+    # Create and start the pipeline
+    try:
+        pipeline = create_viral_pipeline(
+            video_id=video_id,
+            chat_id=chat_id,
+            send_message_func=send_message,
+            send_keyboard_func=send_keyboard,
+            bot=context.bot
+        )
+        await pipeline.start()
     except Exception as e:
         logger.error(f"Clone pipeline error: {e}")
         await context.bot.send_message(
@@ -890,6 +899,33 @@ async def handle_resume_callback(update: Update, context: ContextTypes.DEFAULT_T
             await context.bot.send_message(chat_id, f"❌ Error: {str(e)}")
 
 
+async def handle_viral_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle approval callbacks for viral clone pipeline."""
+    query = update.callback_query
+    await query.answer()
+    
+    chat_id = update.effective_chat.id
+    callback_data = query.data
+    
+    # Get the active pipeline for this chat
+    pipeline = get_viral_pipeline(chat_id)
+    
+    if not pipeline:
+        await query.edit_message_text("❌ No active pipeline found. Use /start to begin.")
+        return
+    
+    try:
+        # Handle the callback
+        should_continue = await pipeline.handle_callback(callback_data)
+        
+        if not should_continue:
+            # Pipeline complete or cancelled
+            remove_viral_pipeline(chat_id)
+    except Exception as e:
+        logger.error(f"Viral callback error: {e}")
+        await context.bot.send_message(chat_id, f"❌ Error: {str(e)}")
+
+
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Show jobs to cancel."""
     try:
@@ -1114,6 +1150,7 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_step_approval, pattern="^approve_"))
     application.add_handler(CallbackQueryHandler(handle_step_regenerate, pattern="^regen_"))
     application.add_handler(CallbackQueryHandler(handle_resume_callback, pattern="^resume_"))
+    application.add_handler(CallbackQueryHandler(handle_viral_callback, pattern="^viral_"))
     
     print("🤖 Bot started! Listening for messages...")
     
