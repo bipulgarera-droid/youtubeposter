@@ -907,31 +907,41 @@ Examples: "IT'S OVER", "THE TRUTH", "ECONOMY DESTROYED"."""
         
         self.state["thumbnail_analysis"] = {"main_text": main_text}
         
-        # Try to generate actual thumbnail
+        # Generate actual thumbnail with correct parameters
         try:
             from execution.generate_thumbnail import generate_thumbnail
             
-            thumb_result = generate_thumbnail(
+            # Create output path
+            thumb_output = os.path.join(self.output_dir, "thumbnail.jpg")
+            
+            result_path = generate_thumbnail(
+                topic=self.state["title"],  # Use title as topic
                 title=self.state["title"],
-                style=self.state["style"],
-                text_overlay=main_text,
-                output_dir=self.output_dir
+                output_path=thumb_output,
+                auto_compress=True
             )
             
-            if thumb_result.get("success"):
-                self.state["thumbnail_path"] = thumb_result.get("path", "")
+            if result_path and os.path.exists(result_path):
+                self.state["thumbnail_path"] = result_path
+                await self.send_message(f"✅ Thumbnail created: `{Path(result_path).name}`")
+            else:
+                await self.send_message("⚠️ Thumbnail generation returned no path")
         except Exception as e:
             await self.send_message(f"⚠️ Thumbnail generation issue: {e}")
+            import traceback
+            traceback.print_exc()
         
         self.save_checkpoint("generate_thumbnail")
         
-        # Send thumbnail preview
+        # Send thumbnail preview (KEY FIX - show actual image)
         if self.bot and self.state.get("thumbnail_path") and os.path.exists(self.state["thumbnail_path"]):
             try:
                 with open(self.state["thumbnail_path"], 'rb') as f:
-                    await self.bot.send_photo(self.chat_id, f, caption="🖼️ Thumbnail Generated")
-            except:
-                pass
+                    await self.bot.send_photo(self.chat_id, f, caption=f"🖼️ Thumbnail - {main_text}")
+            except Exception as e:
+                await self.send_message(f"⚠️ Could not send thumbnail preview: {e}")
+        else:
+            await self.send_message("⚠️ No thumbnail file to preview")
         
         await self.send_message("🖼️ Thumbnail generated\n\nApprove thumbnail?")
         
