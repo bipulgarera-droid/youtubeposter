@@ -713,6 +713,183 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
 
+async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show checkpoints available for resume."""
+    from pathlib import Path
+    import json
+    
+    chat_id = update.effective_chat.id
+    
+    # Check for viral pipeline checkpoints
+    viral_checkpoint_dir = Path(".tmp/viral_pipeline")
+    full_checkpoint_dir = Path(".tmp/checkpoints")
+    
+    checkpoints = []
+    
+    # Scan viral pipeline checkpoints
+    if viral_checkpoint_dir.exists():
+        for f in viral_checkpoint_dir.glob("*_checkpoint.json"):
+            try:
+                with open(f) as fp:
+                    data = json.load(fp)
+                checkpoints.append({
+                    'type': 'viral',
+                    'file': str(f),
+                    'video_id': data.get('video_id', f.stem.replace('_checkpoint', '')),
+                    'last_step': data.get('last_completed_step', 'unknown'),
+                    'title': data.get('original', {}).get('title', 'Unknown')[:40]
+                })
+            except:
+                pass
+    
+    # Scan full pipeline checkpoints
+    if full_checkpoint_dir.exists():
+        for f in full_checkpoint_dir.glob("*_checkpoint.json"):
+            try:
+                with open(f) as fp:
+                    data = json.load(fp)
+                cp_data = data.get('data', {})
+                checkpoints.append({
+                    'type': 'full',
+                    'file': str(f),
+                    'job_id': cp_data.get('job_id', f.stem.replace('_checkpoint', '')),
+                    'last_step': data.get('last_completed_step', 'unknown'),
+                    'topic': cp_data.get('topic', 'Unknown')[:40]
+                })
+            except:
+                pass
+    
+    if not checkpoints:
+        await update.message.reply_text(
+            "📂 No checkpoints found.\n\n"
+            "Checkpoints are saved automatically when pipelines fail.\n"
+            "Use /start to begin a new video."
+        )
+        return
+    
+    # Build keyboard with resume options
+    keyboard = []
+    for cp in checkpoints[:5]:  # Max 5 checkpoints
+        if cp['type'] == 'viral':
+            label = f"🔴 {cp['title']} (at {cp['last_step']})"
+            callback = f"resume_viral_{cp['video_id']}"
+        else:
+            label = f"🎬 {cp['topic']} (at {cp['last_step']})"
+            callback = f"resume_full_{cp['job_id']}"
+        
+        keyboard.append([InlineKeyboardButton(label, callback_data=callback)])
+    
+    keyboard.append([InlineKeyboardButton("❌ Clear All Checkpoints", callback_data="resume_clear_all")])
+    keyboard.append([InlineKeyboardButton("🏠 Back to Menu", callback_data="back_to_menu")])
+    
+    await update.message.reply_text(
+        "📂 *Resume from Checkpoint*\n\n"
+        "These pipelines can be resumed from their last successful step:\n\n"
+        "_(Select one to continue, or clear to start fresh)_",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def handle_resume_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle resume button clicks."""
+    query = update.callback_query
+    await query.answer()
+    
+    callback_data = query.data
+    chat_id = update.effective_chat.id
+    
+    if callback_data == "resume_clear_all":
+        # Clear all checkpoints
+        from pathlib import Path
+        import shutil
+        
+        try:
+            viral_dir = Path(".tmp/viral_pipeline")
+            full_dir = Path(".tmp/checkpoints")
+            
+            if viral_dir.exists():
+                shutil.rmtree(viral_dir)
+            if full_dir.exists():
+                shutil.rmtree(full_dir)
+            
+            await query.edit_message_text("🗑️ All checkpoints cleared!")
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error clearing checkpoints: {e}")
+        return
+    
+    if callback_data == "back_to_menu":
+        await query.edit_message_text("Use /start to begin.")
+        return
+    
+    if callback_data.startswith("resume_viral_"):
+        video_id = callback_data.replace("resume_viral_", "")
+        
+        await query.edit_message_text(f"🔄 Resuming viral pipeline for video {video_id}...")
+        
+        async def send_progress(message):
+            try:
+                await context.bot.send_message(chat_id, message)
+            except:
+                pass
+        
+        try:
+            result = await run_viral_pipeline(video_id, send_progress)
+            
+            if result.get("success"):
+                await context.bot.send_message(
+                    chat_id,
+                    f"✅ *Video Created Successfully!*\n\n"
+                    f"📺 Title: {result.get('data', {}).get('title', 'N/A')}\n"
+                    f"🔗 URL: {result.get('video_url', 'Uploading...')}\n\n"
+                    "Your improved clone is ready!",
+                    parse_mode='Markdown'
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id,
+                    f"❌ Pipeline failed: {result.get('error', 'Unknown error')}\n\n"
+                    "Use /resume to try again."
+                )
+        except Exception as e:
+            await context.bot.send_message(chat_id, f"❌ Error: {str(e)}")
+    
+    elif callback_data.startswith("resume_full_"):
+        job_id = callback_data.replace("resume_full_", "")
+        
+        await query.edit_message_text(f"🔄 Resuming full pipeline job {job_id}...")
+        
+        try:
+            from execution.full_pipeline import run_full_pipeline, load_checkpoint
+            
+            checkpoint = load_checkpoint(job_id)
+            if not checkpoint:
+                await context.bot.send_message(chat_id, "❌ Checkpoint not found.")
+                return
+            
+            youtube_url = checkpoint.get('data', {}).get('youtube_url', '')
+            topic = checkpoint.get('data', {}).get('topic', '')
+            
+            # Run in background (queue job)
+            queue_full_pipeline(
+                job_id=job_id,
+                youtube_url=youtube_url,
+                topic=topic,
+                chat_id=chat_id
+            )
+            
+            await context.bot.send_message(
+                chat_id,
+                f"🔄 *Pipeline Resumed*\n\n"
+                f"Job: `{job_id}`\n"
+                f"Topic: {topic[:40]}...\n\n"
+                "Use /status to check progress.",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            await context.bot.send_message(chat_id, f"❌ Error: {str(e)}")
+
+
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Show jobs to cancel."""
     try:
@@ -931,10 +1108,12 @@ def main():
     # Standalone commands (work outside conversation)
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("digest", digest_command))
+    application.add_handler(CommandHandler("resume", resume_command))
     
     # Step approval callbacks (outside conversation)
     application.add_handler(CallbackQueryHandler(handle_step_approval, pattern="^approve_"))
     application.add_handler(CallbackQueryHandler(handle_step_regenerate, pattern="^regen_"))
+    application.add_handler(CallbackQueryHandler(handle_resume_callback, pattern="^resume_"))
     
     print("🤖 Bot started! Listening for messages...")
     

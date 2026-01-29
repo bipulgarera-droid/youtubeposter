@@ -248,7 +248,8 @@ def upload_video(
     description: str,
     tags: List[str],
     privacy_status: str = 'private',
-    thumbnail_path: str = None
+    thumbnail_path: str = None,
+    category_id: str = '22'
 ) -> Dict:
     """
     Upload a video to YouTube.
@@ -284,7 +285,7 @@ def upload_video(
                 'title': title,
                 'description': description,
                 'tags': tags,
-                'categoryId': '22'  # People & Blogs (common default)
+                'categoryId': category_id  # Use provided category
             },
             'status': {
                 'privacyStatus': privacy_status,
