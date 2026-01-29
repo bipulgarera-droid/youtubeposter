@@ -44,7 +44,19 @@ from execution.generate_narrative_script import generate_narrative_script
 from execution.generate_audio import generate_all_audio
 from execution.generate_ai_images import generate_images_for_script, split_script_to_chunks
 from execution.generate_video import build_video_from_chunks
-from execution.youtube_upload import upload_video
+from execution.youtube_upload import upload_video, upload_video_with_captions
+
+# Subtitle generation
+try:
+    from execution.generate_subtitles import generate_subtitled_video
+except ImportError:
+    generate_subtitled_video = None
+
+# Timestamp generation for description
+try:
+    from execution.generate_timestamps import generate_timestamps_from_srt
+except ImportError:
+    generate_timestamps_from_srt = None
 
 # Supabase storage for persistence across restarts
 try:
@@ -244,13 +256,22 @@ class ViralVideoPipeline:
             await self._generate_images()
             return True
         
-        # Video approval
+        # Video approval -> now goes to subtitles first
         elif callback_data == "viral_video_approve":
-            await self._generate_metadata()
+            await self._add_subtitles()
             return True
         
         elif callback_data == "viral_video_regen":
             await self._generate_video()
+            return True
+        
+        # Subtitles approval (NEW)
+        elif callback_data == "viral_subtitles_approve":
+            await self._generate_metadata()
+            return True
+        
+        elif callback_data == "viral_subtitles_regen":
+            await self._add_subtitles()
             return True
         
         # Metadata approval
@@ -674,6 +695,113 @@ class ViralVideoPipeline:
         else:
             await self.send_message(f"❌ Video generation failed: {result.get('error')}")
     
+    async def _add_subtitles(self):
+        """Add subtitles to video - show SRT preview and downloadable file."""
+        await self.send_message("📝 Adding subtitles to video...")
+        
+        video_path = self.state.get("video_path")
+        if not video_path:
+            await self.send_message("❌ Video path not found. Cannot add subtitles.")
+            return
+        
+        if not generate_subtitled_video:
+            await self.send_message("❌ Subtitle generation module not available.")
+            await self._generate_metadata()  # Skip to metadata
+            return
+        
+        try:
+            result = generate_subtitled_video(
+                video_path=video_path,
+                audio_path=None  # Let it extract audio from video
+            )
+            
+            if not result.get("success"):
+                await self.send_message(f"❌ Subtitle generation failed: {result.get('error')}")
+                return
+            
+            subtitled_path = result.get("subtitled_video")
+            srt_path = result.get("srt_path")
+            
+            if not subtitled_path or not os.path.exists(subtitled_path):
+                await self.send_message("❌ Subtitled video file not created.")
+                return
+            
+            self.state["subtitled_video_path"] = subtitled_path
+            self.state["srt_path"] = srt_path
+            
+            # Upload SRT to Supabase for persistence
+            if STORAGE_AVAILABLE and srt_path and os.path.exists(srt_path):
+                try:
+                    srt_url = upload_file(
+                        local_path=srt_path,
+                        job_id=self.supabase_job_id,
+                        step_name="video",
+                        filename="video.srt"
+                    )
+                    if srt_url:
+                        self.state["srt_url"] = srt_url
+                except Exception as e:
+                    print(f"Failed to upload SRT: {e}")
+            
+            # Send SRT file as downloadable (KEY FIX)
+            if self.bot and srt_path and os.path.exists(srt_path):
+                try:
+                    with open(srt_path, 'rb') as srt_file:
+                        await self.bot.send_document(
+                            self.chat_id,
+                            srt_file,
+                            filename="subtitles.srt",
+                            caption="📄 Subtitles file - download and review"
+                        )
+                except Exception as e:
+                    await self.send_message(f"(Could not send SRT file: {e})")
+            
+            # Show subtitle preview (first few lines)
+            srt_preview = ""
+            if srt_path and os.path.exists(srt_path):
+                try:
+                    with open(srt_path, 'r') as f:
+                        lines = f.readlines()[:20]  # First 20 lines
+                        srt_preview = "".join(lines)
+                except:
+                    pass
+            
+            if srt_preview:
+                await self.send_message(f"📝 *Subtitle Preview:*\n\n```\n{srt_preview}...\n```")
+            
+            # Try to send video preview if small enough
+            if os.path.exists(subtitled_path):
+                video_size_mb = os.path.getsize(subtitled_path) / (1024 * 1024)
+                if video_size_mb > 45:
+                    await self.send_message(f"⚠️ Subtitled video is {video_size_mb:.1f}MB - too large for Telegram preview.")
+                else:
+                    try:
+                        with open(subtitled_path, 'rb') as vf:
+                            await self.bot.send_video(
+                                self.chat_id,
+                                vf,
+                                caption="📝 Subtitled video preview"
+                            )
+                    except Exception as e:
+                        await self.send_message(f"⚠️ Video preview failed: {str(e)[:50]}")
+            
+            self.save_checkpoint("add_subtitles")
+            
+            await self.send_keyboard(
+                f"✅ *Subtitles Added*\n\n"
+                f"📄 SRT file sent above for download\n"
+                f"Video: `{Path(subtitled_path).name}`\n\n"
+                f"Approve subtitles?",
+                [
+                    [("✅ Approve Subtitles", "viral_subtitles_approve")],
+                    [("🔄 Regenerate", "viral_subtitles_regen")]
+                ]
+            )
+            self.state["step"] = "approving_subtitles"
+            
+        except Exception as e:
+            await self.send_message(f"❌ Subtitle error: {str(e)}")
+    
     async def _generate_metadata(self):
         """Generate similar title, description, tags for approval."""
         await self.send_message("📋 Creating title/description/tags...")
@@ -704,7 +832,7 @@ Return ONLY the new title, nothing else."""
         # Generate similar description
         desc_prompt = f"""Rewrite this YouTube description to be similar but unique.
 Keep the first 2 sentences almost identical (change 1-2 words).
-Add Empire Finance branding at the end.
+Keep the same branding and CTAs as the original.
 
 Original first 500 chars:
 {original_desc[:500]}
@@ -712,13 +840,29 @@ Original first 500 chars:
 Return the new description (max 500 chars), nothing else."""
 
         desc_response = model.generate_content(desc_prompt)
-        self.state["description"] = desc_response.text.strip()
+        base_description = desc_response.text.strip()
         
-        # Merge tags
+        # Generate timestamps from SRT and append to description
+        timestamps_text = ""
+        if generate_timestamps_from_srt and self.state.get("srt_path"):
+            try:
+                timestamps_result = generate_timestamps_from_srt(self.state["srt_path"])
+                if timestamps_result.get("success"):
+                    timestamps_text = timestamps_result.get("formatted", "")
+                    self.state["timestamps"] = timestamps_text
+            except Exception as e:
+                print(f"Timestamp generation failed: {e}")
+        
+        # Combine: base description + timestamps
+        if timestamps_text:
+            self.state["description"] = f"{base_description}\n\n📍 Chapters:\n{timestamps_text}"
+        else:
+            self.state["description"] = base_description
+        
+        # Use original tags (filtered) - no hardcoded channel branding
         vague_tags = {"video", "youtube", "2024", "2025", "2026", "new", "latest", "trending"}
-        good_original_tags = [t for t in original_tags if t.lower() not in vague_tags][:15]
-        our_tags = ["empire finance", "economy explained", "financial news", "economic analysis"]
-        self.state["tags"] = list(set(good_original_tags + our_tags))[:20]
+        good_original_tags = [t for t in original_tags if t.lower() not in vague_tags][:20]
+        self.state["tags"] = good_original_tags
         
         self.save_checkpoint("generate_metadata")
         
@@ -823,25 +967,49 @@ Examples: "IT'S OVER", "THE TRUTH", "ECONOMY DESTROYED"."""
         )
     
     async def _upload_to_youtube(self):
-        """Upload video to YouTube."""
+        """Upload video to YouTube with SRT captions."""
         await self.send_message("📤 Uploading to YouTube...")
         
-        result = upload_video(
-            video_path=self.state["video_path"],
-            title=self.state["title"],
-            description=self.state["description"],
-            tags=self.state["tags"],
-            thumbnail_path=self.state.get("thumbnail_path"),
-            category_id="22"
-        )
+        # Use subtitled video if available, otherwise raw video
+        video_to_upload = self.state.get("subtitled_video_path") or self.state.get("video_path")
+        srt_path = self.state.get("srt_path")
+        
+        if not video_to_upload:
+            await self.send_message("❌ No video found to upload.")
+            return
+        
+        # Use upload_video_with_captions if SRT available
+        if srt_path and os.path.exists(srt_path):
+            await self.send_message("📝 Uploading with SRT captions...")
+            result = upload_video_with_captions(
+                video_path=video_to_upload,
+                title=self.state["title"],
+                description=self.state["description"],
+                tags=self.state["tags"],
+                thumbnail_path=self.state.get("thumbnail_path"),
+                srt_path=srt_path,
+                category_id="22"
+            )
+        else:
+            result = upload_video(
+                video_path=video_to_upload,
+                title=self.state["title"],
+                description=self.state["description"],
+                tags=self.state["tags"],
+                thumbnail_path=self.state.get("thumbnail_path"),
+                category_id="22"
+            )
         
         if result.get("success"):
             video_url = result.get("url", f"https://youtube.com/watch?v={result.get('video_id', '')}")
             
+            caption_status = "✅ Captions uploaded" if result.get("captions_uploaded") else "⚠️ Captions not uploaded"
+            
             await self.send_message(
                 f"✅ *Upload Complete!*\n\n"
                 f"Video ID: `{result.get('video_id', 'N/A')}`\n"
-                f"URL: {video_url}\n\n"
+                f"URL: {video_url}\n"
+                f"{caption_status}\n\n"
                 "Your improved clone is live!"
             )
             
