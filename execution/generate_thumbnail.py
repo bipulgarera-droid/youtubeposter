@@ -197,6 +197,49 @@ def extract_thumbnail_text(topic: str) -> str:
     return "IT'S OVER"
 
 
+def analyze_style_reference(image_path: str) -> str:
+    """
+    Analyze reference image using Gemini Vision to get detailed style description.
+    """
+    try:
+        import requests
+        api_key = GEMINI_API_KEY
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+        
+        with open(image_path, "rb") as image_file:
+            image_data = base64.b64encode(image_file.read()).decode("utf-8")
+            
+        prompt = """Describe this YouTube thumbnail in extreme detail for an AI image generator to replicate its style.
+        Focus on:
+        1. Art style (e.g. realistic, cartoon, 3D render, collage)
+        2. Composition and layout
+        3. Color palette and lighting
+        4. Main subject expression and pose
+        5. Background elements
+        6. Text style (font, color, effects) - note the placement but don't include the specific text
+        
+        Keep it concise but descriptive. Start with 'A YouTube thumbnail in the style of...'"""
+        
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": prompt},
+                    {"inline_data": {"mime_type": "image/jpeg", "data": image_data}}
+                ]
+            }]
+        }
+        
+        response = requests.post(url, json=payload, timeout=30)
+        if response.status_code == 200:
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            print(f"⚠️ Vision analysis failed: {response.text}")
+            return None
+    except Exception as e:
+        print(f"⚠️ Vision analysis error: {e}")
+        return None
+
+
 def generate_thumbnail_with_gemini(
     topic: str,
     output_path: str = None,
@@ -204,43 +247,59 @@ def generate_thumbnail_with_gemini(
 ) -> Optional[str]:
     """
     Generate thumbnail using Gemini's image generation.
-    
     Args:
         topic: Video topic for the thumbnail
         output_path: Where to save the image
         style_reference: Optional path to reference image for style
-        
-    Returns:
-        Path to generated thumbnail or None
     """
     if not output_path:
         output_dir = TMP_DIR / 'thumbnails'
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = str(output_dir / 'thumbnail.png')
     
-    # Create prompt
-    style_notes = ""
-    if style_reference and Path(style_reference).exists():
-        style_notes = "Match the visual style of the reference image provided."
+    # 1. Create Base Prompt
+    base_prompt = generate_thumbnail_prompt(topic, "")
+    final_prompt = base_prompt
     
-    prompt = generate_thumbnail_prompt(topic, style_notes)
+    # 2. Analyze Reference if provided (The "Cloning" Step)
+    if style_reference and Path(style_reference).exists():
+        print(f"👁️ Analyzing reference thumbnail style: {Path(style_reference).name}...")
+        style_description = analyze_style_reference(style_reference)
+        
+        if style_description:
+            print("✅ Style analysis complete. merging with topic...")
+            # Extract emotional punch again to ensure it's in the cloning prompt
+            thumb_text = extract_thumbnail_text(topic)
+            
+            final_prompt = f"""Create a YouTube thumbnail based on this specific style description:
+            
+{style_description}
+
+IMPORTANT ADAPTATION:
+- Replacing the subject/theme with: {topic}
+- Change the MAIN TEXT to: "{thumb_text}" (Big, Bold, White with Black Outline)
+- Keep the exact same composition, color palette, and 'vibe' as the description above.
+- Make it 90% similar in style, but tailored to the new topic."""
+        else:
+            print("⚠️ Style analysis failed, falling back to basic prompt.")
     
     try:
         import requests
         
-        # Use Nano Banana Pro (gemini-3-pro-image-preview) for thumbnail generation
+        # Use Nano Banana Pro (gemini-3-pro-image-preview) for GENERATION
         api_key = GEMINI_API_KEY
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key={api_key}"
         
         payload = {
             "contents": [{
-                "parts": [{"text": prompt}]
+                "parts": [{"text": final_prompt}]
             }],
             "generationConfig": {
                 "responseModalities": ["TEXT", "IMAGE"]
             }
         }
         
+        print("🎨 Sending generation request...")
         response = requests.post(url, json=payload, timeout=120)
         
         if response.status_code == 200:

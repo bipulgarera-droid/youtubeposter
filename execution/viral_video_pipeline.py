@@ -893,6 +893,22 @@ Return the new description (max 500 chars), nothing else."""
         # No need to manually analyze text - generate_thumbnail does it internally
         # matching the exact logic of new_video_pipeline
         
+        # Download original thumbnail for style cloning (80-90% match)
+        style_reference_path = None
+        original_thumb_url = self.state.get("original", {}).get("thumbnail_url")
+        
+        if original_thumb_url:
+            try:
+                import requests
+                response = requests.get(original_thumb_url, timeout=10)
+                if response.status_code == 200:
+                    style_reference_path = os.path.join(self.output_dir, "original_thumb_reference.jpg")
+                    with open(style_reference_path, "wb") as f:
+                        f.write(response.content)
+                    await self.send_message("🖼️ Using original thumbnail as reference for cloning...")
+            except Exception as e:
+                print(f"Failed to download original thumbnail: {e}")
+
         # Generate actual thumbnail with correct parameters
         try:
             from execution.generate_thumbnail import generate_thumbnail
@@ -904,6 +920,7 @@ Return the new description (max 500 chars), nothing else."""
                 topic=self.state["title"],  # Use title as topic
                 title=self.state["title"],
                 output_path=thumb_output,
+                style_reference=style_reference_path, # Pass original thumb as reference
                 auto_compress=True
             )
             
