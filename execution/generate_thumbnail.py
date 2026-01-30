@@ -296,6 +296,7 @@ def refine_prompt_with_grounding(prompt: str, topic: str, recipe: str = "") -> s
            - Write a highly detailed image generation prompt.
            - Format: "A YouTube thumbnail... [Visuals of Trump]... [Background details]... TEXT TO RENDER: Top: '[Text]', Left: '[Text]', Right: '[Text]'"
            - Include: "High quality, 8k, detailed, realistic skin texture."
+           - Constraint: "FULL BLEED 16:9 IMAGE. NO BLACK BORDERS. NO CAPTIONS AT THE BOTTOM. The image must fill the entire frame."
         """
         
         # We try to use search tool config if possible
@@ -407,7 +408,9 @@ def generate_thumbnail_image_only(prompt: str, output_path: str, reference_image
                 "parts": parts
             }],
             "generationConfig": {
-                "responseModalities": ["TEXT", "IMAGE"]
+                "responseModalities": ["TEXT", "IMAGE"],
+                "aspectRatio": "16:9",
+                "sampleCount": 1
             }
         }
         
