@@ -41,6 +41,7 @@ def download_audio(video_id: str, output_path: str) -> str:
     url = f"https://www.youtube.com/watch?v={video_id}"
     
     # Use yt-dlp to download audio only
+    # Added anti-bot bypass measures
     cmd = [
         "yt-dlp",
         "-x",  # Extract audio
@@ -49,8 +50,22 @@ def download_audio(video_id: str, output_path: str) -> str:
         "-o", output_path,
         "--no-playlist",
         "--quiet",
+        "--no-warnings",
+        # Bypass "Sign in to confirm you're not a bot"
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "--extractor-args", "youtube:player_client=android",
         url
     ]
+
+    # Check for cookies.txt in acceptable locations
+    cookies_path = None
+    if os.path.exists("cookies.txt"):
+        cookies_path = "cookies.txt"
+    elif os.path.exists("../cookies.txt"):
+        cookies_path = "../cookies.txt"
+    
+    if cookies_path:
+        cmd.extend(["--cookies", cookies_path])
     
     try:
         subprocess.run(cmd, check=True, capture_output=True)
