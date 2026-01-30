@@ -5013,3 +5013,47 @@ async function finalizeThumbnail() {
         showToast('✅ Thumbnail finalized for posting!');
     }
 }
+
+// ==========================================
+// LOCKED TEMPLATE GENERATOR (V5)
+// ==========================================
+async function generateLockedThumbnail() {
+    const topicInput = document.getElementById('locked-topic-input');
+    const resultDiv = document.getElementById('locked-result');
+    const imgElement = document.getElementById('locked-img');
+    const btn = document.querySelector('button[onclick="generateLockedThumbnail()"]');
+
+    const topic = topicInput.value.trim();
+    if (!topic) {
+        alert("Please enter a topic first.");
+        return;
+    }
+
+    // UI Loading State
+    btn.disabled = true;
+    btn.innerHTML = "⏳ Generating...";
+    resultDiv.style.display = 'none';
+
+    try {
+        const response = await fetch('/api/generate-thumbnail-locked', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ topic: topic })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            imgElement.src = `${data.image_url}?t=${new Date().getTime()}`;
+            resultDiv.style.display = 'block';
+        } else {
+            alert("Error: " + data.message);
+        }
+
+    } catch (e) {
+        alert("Request Failed: " + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = "Generate V5";
+    }
+}

@@ -197,9 +197,10 @@ def extract_thumbnail_text(topic: str) -> str:
     return "IT'S OVER"
 
 
-def analyze_style_reference(image_path: str) -> str:
+def analyze_thumbnail_recipe(image_path: str, title_context: str = "") -> str:
     """
-    Analyze reference image using Gemini Vision to get detailed style AND TEXT structure.
+    Analyze reference image to extract the 'Virality Template' (Recipe).
+    Returns a strict instruction set for the image generator.
     """
     try:
         import requests
@@ -209,21 +210,28 @@ def analyze_style_reference(image_path: str) -> str:
         with open(image_path, "rb") as image_file:
             image_data = base64.b64encode(image_file.read()).decode("utf-8")
             
-        prompt = """Analyze this YouTube thumbnail structure in detail.
+        prompt = f"""You are a YouTube Thumbnail Reverse-Engineer.
         
-        CRITICAL OUTPUT SECTIONS:
+        CONTEXT TITLE: "{title_context}" (The video this thumb belongs to)
         
-        1. **TEXT STRUCTURE (Analyze EXACTLY):**
-            - List every text block found.
-            - For each block: "Text Content", "Color/Style", "Position", "Approx Word Count".
-            - Example: "Top Left: 'IT'S OVER' (Yellow, Bold), Bottom Right: '$500B GONE' (Red)"
+        TASK: Extract the DESIGN RECIPE used here so we can replicate it for a new topic.
         
-        2. **VISUAL COMPOSITION:**
-            - Subject placement (Center/Split?)
-            - Background elements details (count them).
-            - Lighting/Mood.
+        ANALYZE 3 LAYERS:
         
-        Return a concise description focused on replicating this STRUCTURE (especially where text goes and how much text there is)."""
+        1. **TEXT STRATEGY (Crucial):**
+           - What is the exact text? Count the words.
+           - How does it relate to the Title? (e.g. "Title says 'Market Crash', Thumb says 'IT'S OVER'").
+           - Font Colors & Backgrounds (e.g. "Big Yellow text, Red background strip").
+           - POSITION: Where is it? (Center, Top-Left, etc).
+        
+        2. **LAYOUT TEMPLATE:**
+           - Character: Who is it? (Left or Right?) Expression?
+           - Background: What elements are shown? (Split screen? Chaos?)
+        
+        3. **THE RECIPE (Output this part clearly):**
+           - Write a prompt instruction: "Template: Split screen. Left side: [Crisis Element]. Right side: [Host]. Text: [2-3 words] in [Color] style."
+        
+        Keep it concise. Focus on the RECIPE."""
         
         payload = {
             "contents": [{
@@ -238,57 +246,52 @@ def analyze_style_reference(image_path: str) -> str:
         if response.status_code == 200:
             return response.json()['candidates'][0]['content']['parts'][0]['text']
         else:
-            print(f"⚠️ Vision analysis failed: {response.text}")
+            print(f"⚠️ Recipe analysis failed: {response.text}")
             return None
     except Exception as e:
-        print(f"⚠️ Vision analysis error: {e}")
+        print(f"⚠️ Recipe analysis error: {e}")
         return None
 
 
-def refine_prompt_with_grounding(prompt: str, topic: str, style_desc: str = "") -> str:
+def refine_prompt_with_grounding(prompt: str, topic: str, recipe: str = "") -> str:
     """
     Use Gemini to:
-    1. Swap Leaders (Biden -> Trump 2026).
-    2. GENERATE NEW TEXT that exactly matches the Reference Text Structure (word count, style).
-    3. Remove generic "Breaking News" bands if not in reference.
+    1. Apply the DESIGN RECIPE from the reference (Text Strategy + Layout).
+    2. Swap Leaders (Biden -> Trump 2026).
     """
     try:
         model = genai.GenerativeModel('gemini-2.0-flash') 
         
         refine_prompt = f"""You are an expert YouTube Thumbnail Designer. Current Year: 2026.
         
-        OBJECTIVE: Create a prompt for a NEW thumbnail about "{topic}" based on the REFERENCE STRUCTURE below.
+        OBJECTIVE: Create a prompt for a NEW thumbnail about "{topic}" that follows this PRECISE RECIPE.
         
-        REFERENCE STYLE DESCRIPTION:
-        {style_desc}
+        THE RECIPE (FROM REFERENCE):
+        {recipe}
         
         -------------------------------------------
         
-        TASK 1: LEADER SELECTION (Strict Logic)
-        - Analyze Title: "{topic}"
-        - If 2 Countries (e.g., US & China) -> SPLIT COMPOSITION (Leader A vs Leader B).
-        - If 1 Country/Generic -> CENTER COMPOSITION (Leader of that country, default to Trump for US).
-        - Replace any mentioned politicians with their CURRENT 2026 equivalent (e.g. Trump for US).
+        TASK 1: APPLY THE TEXT STRATEGY (CRITICAL)
+        - "Reflect" the reference's text strategy for the new topic.
+        - If Recipe says "2 words, Yellow", you MUST generate 2 words in Yellow.
+        - If Recipe says "Text is a Summary", generate a summary.
+        - MATCH THE FONT COLORS AND BACKGROUND STRIPS EXACTLY.
         
-        TASK 2: TEXT GENERATION (Match Reference Density)
-        - Provide SPECIFIC text to render.
-        - MATCH THE WORD COUNT and LAYOUT of the Reference Text found in the description.
-        - Example: If reference has 2 blocks ("IT'S OVER" and "$3T LOST"), you generate 2 similar blocks for the NEW topic (e.g. "MARKET CRASH" and "$500B GONE").
-        - DO NOT add extra text or "Breaking News" bands unless the reference has them.
-        - Text must be short, punchy, sensational.
+        TASK 2: LEADER SELECTION & LAYOUT
+        - Follow the Recipe's layout (e.g. "Split Screen" or "Host Right").
+        - RECOGNIZE CONTEXT:
+           - If 2 Countries mentioned in "{topic}" -> SPLIT COMPOSITION (Leader A vs Leader B).
+           - If 1 Country/Generic -> CENTER or RECIPE DEFAULT.
+        - REPLACE POLITICIANS with 2026 LEADERS (Trump for US).
         
-        TASK 3: COMPOSITION
-        - Background: Dramatic but unc-luttered (max 5-6 elements like chart/money).
-        - Lighting: High contrast.
-        
-        OUTPUT:
-        Write the final Image Generation Prompt. 
-        Format: "A YouTube thumbnail... [Visuals]... TEXT TO RENDER: '[Text 1]', '[Text 2]'..."
+        TASK 3: OUTPUT PROMPT
+        - Write a detailed image generation prompt.
+        - Format: "A YouTube thumbnail... [Visuals]... TEXT TO RENDER: '[Text]'"...
         """
         
         # We try to use search tool config if possible
         try:
-           response = model.generate_content(refine_prompt) # removed tools temporarily to fix SDK error
+           response = model.generate_content(refine_prompt) 
         except:
            response = model.generate_content(refine_prompt)
            
@@ -323,33 +326,49 @@ def generate_thumbnail_with_gemini(
     
     # 2. Analyze Reference if provided (The "Cloning" Step)
     if style_reference and Path(style_reference).exists():
-        print(f"👁️ Analyzing reference thumbnail style: {Path(style_reference).name}...")
-        style_description = analyze_style_reference(style_reference)
+        print(f"👁️ Analyzing thumbnail RECIPE: {Path(style_reference).name}...")
+        # Analyze recipe
+        recipe = analyze_thumbnail_recipe(style_reference, topic)
+        if not recipe:
+            recipe = "Use a standard high-contract YouTube style."
         
-        if style_description:
-            print("✅ Style analysis complete. merging with topic...")
-            # Extract emotional punch again to ensure it's in the cloning prompt
-            thumb_text = extract_thumbnail_text(topic)
-            
-            # Formulate the "Draft" prompt
-            draft_prompt = f"""Create a YouTube thumbnail based on this specific style description:
-            
-{style_description}
+        print("✅ Recipe extracted. merging with topic...")
+        
+        # Formulate the "Draft" prompt
+        draft_prompt = f"""Create a YouTube thumbnail based on this DESIGN RECIPE:
+        
+{recipe}
 
 IMPORTANT ADAPTATION:
-- Visual Subject: Depict concepts related to "{topic}" (visuals only, NO text)
-- TEXT TO RENDER: "{thumb_text}" (Big, Bold, White with Black Outline)
-- CRITICAL: Render ONLY the text "{thumb_text}". Do NOT include any other text, subtitles, or description words.
-- Keep the exact same composition, color palette, and 'vibe' as the description above.
-- Make it 90% similar in style, but tailored to the new topic."""
+- Visual Subject: Depict concepts related to "{topic}"
+- FOLLOW THE RECIPE'S INSTRUCTIONS FOR TEXT AND LAYOUT EXACTLY.
+"""
 
-            # 3. Refine with Grounding (New Step)
-            print("🌍 Refinement: Checking for outdated figures & Text Structure...")
-            final_prompt = refine_prompt_with_grounding(draft_prompt, topic, style_description)
-            
-        else:
-            print("⚠️ Style analysis failed, falling back to basic prompt.")
+        # 3. Refine with Grounding & Recipe
+        print("🌍 Refinement: Applying Recipe & 2026 Context...")
+        final_prompt = refine_prompt_with_grounding(draft_prompt, topic, recipe)
+        
+    else:
+        print("⚠️ No style reference provided, using basic prompt.")
     
+    # 4. Generate Image (PASSING THE REFERENCE IMAGE FOR VISUAL GROUNDING)
+    print(f"🎨 Calling Image Generator... (Ref: {Path(style_reference).name if style_reference else 'None'})")
+    success = generate_thumbnail_image_only(
+        prompt=final_prompt,
+        output_path=output_path,
+        reference_image_path=style_reference  # <--- CRITICAL: Pass the image for Visual Style Transfer
+    )
+    
+    if success:
+        return output_path
+    return None
+    
+def generate_thumbnail_image_only(prompt: str, output_path: str, reference_image_path: str = None) -> bool:
+    """
+    Directly call the Imagen 3 / Gemini Image Generation API with a prompt.
+    Supports optional Reference Image for style/composition grounding.
+    Returns True if successful.
+    """
     try:
         import requests
         
@@ -357,9 +376,23 @@ IMPORTANT ADAPTATION:
         api_key = GEMINI_API_KEY
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key={api_key}"
         
+        parts = [{"text": prompt}]
+        
+        # Add Reference Image if provided
+        if reference_image_path and Path(reference_image_path).exists():
+            print(f"   👁️ Attaching Reference Image: {Path(reference_image_path).name}")
+            with open(reference_image_path, "rb") as img_file:
+                b64_data = base64.b64encode(img_file.read()).decode("utf-8")
+                parts.append({
+                    "inline_data": {
+                        "mime_type": "image/jpeg", # Assuming JPEG/PNG, API is flexible
+                        "data": b64_data
+                    }
+                })
+        
         payload = {
             "contents": [{
-                "parts": [{"text": final_prompt}]
+                "parts": parts
             }],
             "generationConfig": {
                 "responseModalities": ["TEXT", "IMAGE"]
@@ -383,17 +416,17 @@ IMPORTANT ADAPTATION:
                         with open(output_path, 'wb') as f:
                             f.write(image_data)
                         print(f"✅ Thumbnail saved: {output_path}")
-                        return output_path
+                        return True
             
             print("⚠️ No image in response")
-            return None
+            return False
         else:
             print(f"❌ API error: {response.status_code} - {response.text[:200]}")
-            return None
+            return False
         
     except Exception as e:
         print(f"❌ Thumbnail generation failed: {e}")
-        return None
+        return False
 
 
 def generate_thumbnail_with_flux(

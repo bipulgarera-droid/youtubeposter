@@ -34,6 +34,8 @@ try:
         extract_video_id, download_thumbnail, dissect_thumbnail, 
         generate_thumbnail_prompt
     )
+    # Import the new STRICT Locked Template Generator
+    from execution.generate_thumbnail import generate_thumbnail_with_gemini
     from execution.title_generator import generate_title_options
     from execution.keyword_research import research_keywords
     from execution.youtube_video_info import get_video_details, get_multiple_video_details, format_duration
@@ -62,6 +64,33 @@ except ImportError as e:
     def download_thumbnail(*args, **kwargs): return None
     def dissect_thumbnail(*args, **kwargs): return {}
     def generate_thumbnail_prompt(*args, **kwargs): return ""
+    def generate_title_options(*args, **kwargs): return []
+    def research_keywords(*args, **kwargs): return []
+    def get_video_details(*args, **kwargs): return {}
+    def get_multiple_video_details(*args, **kwargs): return []
+    def format_duration(*args, **kwargs): return ""
+    def get_auth_url(): return {}
+    def handle_oauth_callback(*args, **kwargs): return {}
+    def is_authenticated(): return False
+    def upload_video(*args, **kwargs): return {}
+    # Define placeholder functions for missing imports
+    def discover_videos(*args, **kwargs): return []
+    def transcribe_video(*args, **kwargs): return ""
+    def search_news(*args, **kwargs): return []
+    def generate_script(*args, **kwargs): return ""
+    def fetch_multiple_articles(*args, **kwargs): return []
+    def build_video_from_chunks(*args, **kwargs): return None
+    def check_ffmpeg(): return False
+    def generate_all_images(*args, **kwargs): return []
+    def generate_chunk_image(*args, **kwargs): return None
+    def split_script_to_chunks(*args, **kwargs): return []
+    def generate_narrative_script(*args, **kwargs): return {}
+    DEFAULT_BEATS = []
+    def extract_video_id(*args, **kwargs): return None
+    def download_thumbnail(*args, **kwargs): return None
+    def dissect_thumbnail(*args, **kwargs): return {}
+    def generate_thumbnail_prompt(*args, **kwargs): return ""
+    def generate_thumbnail_with_gemini(*args, **kwargs): return None  # Added placeholder
     def generate_title_options(*args, **kwargs): return []
     def research_keywords(*args, **kwargs): return []
     def get_video_details(*args, **kwargs): return {}
@@ -3077,6 +3106,49 @@ def api_select_videos():
     
     app_state['selected_videos'] = selected
     return jsonify({'success': True, 'selected': selected, 'count': len(selected)})
+
+@app.route('/api/generate-thumbnail-locked', methods=['POST'])
+def api_generate_thumbnail_locked():
+    """
+    Generate a thumbnail using the LOCKED MASTER TEMPLATE (V5).
+    Crucial: Passes execution/assets/master_template.jpg as a Strict Visual Reference.
+    """
+    try:
+        from execution.generate_thumbnail import generate_thumbnail_with_gemini
+        
+        data = request.json
+        topic = data.get('topic')
+        if not topic:
+            return jsonify({'success': False, 'message': 'Topic is required'}), 400
+            
+        print(f"🔒 Generating LOCKED Template Thumbnail for: {topic}")
+        
+        # Hardcoded Reference Path for consistency
+        master_template_path = os.path.join("execution", "assets", "master_template.jpg")
+        
+        if not os.path.exists(master_template_path):
+             return jsonify({'success': False, 'message': f'Master Template not found at {master_template_path}'}), 500
+
+        output_path = generate_thumbnail_with_gemini(
+            topic=topic,
+            style_reference=master_template_path  # <--- THIS IS THE KEY (Passed as Visual Ref)
+        )
+        
+        if output_path:
+             # Convert abs path to relative for frontend
+            rel_path = os.path.relpath(output_path, start=BASE_DIR)
+            return jsonify({
+                'success': True,
+                'image_url': f"/{rel_path}",
+                'message': 'Generated with Locked Master Template'
+            })
+        else:
+            return jsonify({'success': False, 'message': 'Generation failed inside Gemini wrapper'}), 500
+            
+    except Exception as e:
+        print(f"❌ Locked Gen Error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5001))

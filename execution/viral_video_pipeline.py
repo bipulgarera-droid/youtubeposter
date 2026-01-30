@@ -46,6 +46,9 @@ from execution.generate_ai_images import generate_images_for_script, split_scrip
 from execution.generate_video import build_video_from_chunks
 from execution.youtube_upload import upload_video, upload_video_with_captions
 
+# NEW: Import Locked Template Generator
+from execution.generate_thumbnail import generate_thumbnail_with_gemini
+
 # Subtitle generation
 try:
     from execution.generate_subtitles import generate_subtitled_video
@@ -186,6 +189,48 @@ class ViralVideoPipeline:
         except:
             pass
     
+    async def _generate_locked_thumbnail_early(self):
+        """Generate a thumbnail using the Locked Master Template (V5) immediately."""
+        await self.send_message("⚡ Generating V5 Locked Thumbnail... (Using 'Slanted Yellow Wrapper' Template)")
+        
+        try:
+            # Use the title as the topic
+            topic = self.state["title"]
+            master_template_path = os.path.abspath("execution/assets/master_template.jpg")
+            
+            if not os.path.exists(master_template_path):
+                 await self.send_message(f"❌ Master template not found at {master_template_path}")
+                 return
+
+            # Run in thread executor to avoid blocking asyncio loop
+            loop = asyncio.get_event_loop()
+            output_path = await loop.run_in_executor(
+                None, 
+                lambda: generate_thumbnail_with_gemini(
+                    topic=topic,
+                    style_reference=master_template_path
+                )
+            )
+            
+            if output_path and os.path.exists(output_path):
+                # Send the image
+                if self.bot:
+                    with open(output_path, 'rb') as img:
+                        await self.bot.send_photo(
+                            self.chat_id, 
+                            img, 
+                            caption=f"⚡ **Locked V5 Thumbnail**\nTopic: {topic}\n\n_Strict adherence to Master Template_"
+                        )
+                else:
+                     await self.send_message("✅ Thumbnail generated (check server logs for path).")
+            else:
+                 await self.send_message("❌ Generation failed (no output path returned).")
+                 
+        except Exception as e:
+            await self.send_message(f"❌ Thumbnail generation error: {e}")
+            import traceback
+            traceback.print_exc()
+
     async def start(self):
         """Start the viral cloning pipeline - fetch video info."""
         await self.send_message("🚀 *Starting Viral Video Clone Pipeline*\n\n_Uses same quality generation as main pipeline_")
@@ -213,6 +258,11 @@ class ViralVideoPipeline:
         elif callback_data == "viral_cancel":
             await self.send_message("❌ Pipeline cancelled.")
             return False
+        
+        # Locked Thumbnail Generation (Early access)
+        elif callback_data == "viral_create_thumbnail_locked":
+            await self._generate_locked_thumbnail_early()
+            return True
         
         # Research approval
         elif callback_data == "viral_research_approve":
@@ -368,6 +418,7 @@ class ViralVideoPipeline:
         await self.send_keyboard(
             "Proceed to research?",
             [
+                [("⚡ Create V5 Thumbnail", "viral_create_thumbnail_locked")],
                 [("✅ Approve Research", "viral_transcript_approve")],
                 [("🔄 Regenerate", "viral_transcript_regen")],
                 [("❌ Cancel", "viral_cancel")]
@@ -1170,3 +1221,5 @@ async def resume_viral_from_cloud(chat_id: int, send_message_func, send_keyboard
 if __name__ == "__main__":
     print("Usage: Import and use create_viral_pipeline() for approval flow")
     print("Or use resume_viral_from_cloud() to resume from Supabase images")
+
+
