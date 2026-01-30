@@ -232,9 +232,26 @@ def list_all_jobs() -> list:
     try:
         result = client.storage.from_(BUCKET_NAME).list()
         # Filter to only folders (jobs), not files
-        jobs = [item['name'] for item in result if item.get('id') is None or item['name'].startswith('video_')]
-        # Sort by name (which includes timestamp) - newest first
-        jobs.sort(reverse=True)
+        jobs = [item['name'] for item in result if item.get('id') is None or item['name'].startswith('video_') or item['name'].startswith('viral_')]
+        
+        # Helper to extract timestamp for sorting
+        def get_timestamp(job_name):
+            try:
+                # Expect format: prefix_videoID_YYYYMMDD_HHMMSS
+                # We take the last part "YYYYMMDD_HHMMSS" which is 15 chars
+                # Or split by _ and take last 2
+                parts = job_name.split('_')
+                if len(parts) >= 2:
+                    ts_str = f"{parts[-2]}_{parts[-1]}"
+                    # Validate it looks like a timestamp
+                    if len(ts_str) == 15 and ts_str[8] == '_':
+                         return ts_str
+                return "00000000_000000" # Fallback for bad formats
+            except:
+                return "00000000_000000"
+
+        # Sort by timestamp (newest first)
+        jobs.sort(key=get_timestamp, reverse=True)
         return jobs
     except Exception as e:
         print(f"❌ List jobs failed: {e}")
