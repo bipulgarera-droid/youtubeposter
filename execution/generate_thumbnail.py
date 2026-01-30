@@ -276,8 +276,9 @@ def generate_thumbnail_with_gemini(
 {style_description}
 
 IMPORTANT ADAPTATION:
-- Replacing the subject/theme with: {topic}
-- Change the MAIN TEXT to: "{thumb_text}" (Big, Bold, White with Black Outline)
+- Visual Subject: Depict concepts related to "{topic}" (visuals only, NO text)
+- TEXT TO RENDER: "{thumb_text}" (Big, Bold, White with Black Outline)
+- CRITICAL: Render ONLY the text "{thumb_text}". Do NOT include any other text, subtitles, or description words.
 - Keep the exact same composition, color palette, and 'vibe' as the description above.
 - Make it 90% similar in style, but tailored to the new topic."""
         else:
