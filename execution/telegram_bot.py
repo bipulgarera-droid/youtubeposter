@@ -50,7 +50,8 @@ from execution.viral_video_pipeline import (
     create_viral_pipeline,
     get_viral_pipeline,
     remove_viral_pipeline,
-    resume_viral_from_cloud
+    resume_viral_from_cloud,
+    recover_viral_pipeline
 )
 
 # Configure logging
@@ -929,6 +930,25 @@ async def handle_viral_callback(update: Update, context: ContextTypes.DEFAULT_TY
     # Get the active pipeline for this chat
     pipeline = get_viral_pipeline(chat_id)
     
+    if not pipeline:
+        # Try to recover from local checkpoint (if bot restarted)
+        async def send_message(text):
+            try:
+                await context.bot.send_message(chat_id, text, parse_mode='Markdown')
+            except Exception as e:
+                logger.error(f"Send message failed: {e}")
+        
+        async def send_keyboard(text, buttons):
+            try:
+                keyboard = []
+                for row in buttons:
+                    keyboard.append([InlineKeyboardButton(label, callback_data=cb) for label, cb in row])
+                await context.bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception as e:
+                logger.error(f"Send keyboard failed: {e}")
+
+        pipeline = recover_viral_pipeline(chat_id, send_message, send_keyboard, bot=context.bot)
+
     if not pipeline:
         await query.edit_message_text("❌ No active pipeline found. Use /start to begin.")
         return

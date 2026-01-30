@@ -142,7 +142,8 @@ class ViralVideoPipeline:
             "subtitled_video_path": "",
             "thumbnail_path": "",
             "output_dir": self.output_dir,
-            "supabase_job_id": self.supabase_job_id
+            "supabase_job_id": self.supabase_job_id,
+            "chat_id": chat_id  # Persist chat_id for recovery
         }
     
     def checkpoint_path(self) -> str:
@@ -1218,8 +1219,47 @@ async def resume_viral_from_cloud(chat_id: int, send_message_func, send_keyboard
         return None
 
 
-if __name__ == "__main__":
-    print("Usage: Import and use create_viral_pipeline() for approval flow")
     print("Or use resume_viral_from_cloud() to resume from Supabase images")
+
+
+def recover_viral_pipeline(chat_id: int, send_message_func, send_keyboard_func, bot=None) -> Optional[ViralVideoPipeline]:
+    """
+    Attempt to recover an active pipeline from local checkpoints for this chat_id.
+    Useful if bot restarted and memory state was lost.
+    """
+    import json
+    from pathlib import Path
+    
+    checkpoint_dir = Path(".tmp/viral_pipeline")
+    if not checkpoint_dir.exists():
+        return None
+    
+    # Scan all checkpoints
+    for cp_file in checkpoint_dir.glob("*_checkpoint.json"):
+        try:
+            with open(cp_file, 'r') as f:
+                state = json.load(f)
+            
+            # Check if this checkpoint belongs to the chat
+            if state.get("chat_id") == chat_id:
+                video_id = state.get("video_id")
+                if not video_id:
+                    continue
+                    
+                print(f"🔄 Recovering pipeline for chat {chat_id} from {cp_file}")
+                
+                # Reconstruct pipeline
+                pipeline = ViralVideoPipeline(video_id, chat_id, send_message_func, send_keyboard_func, bot)
+                pipeline.state = state
+                
+                # Re-register
+                _active_pipelines[chat_id] = pipeline
+                return pipeline
+                
+        except Exception as e:
+            print(f"Error checking checkpoint {cp_file}: {e}")
+            continue
+            
+    return None
 
 
