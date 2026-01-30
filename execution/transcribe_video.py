@@ -36,8 +36,35 @@ def extract_video_id(url: str) -> str:
     raise ValueError(f"Could not extract video ID from URL: {url}")
 
 
+def download_audio_pytubefix(video_id: str, output_path: str) -> bool:
+    """Download audio using pytubefix (often bypasses 403 types)."""
+    try:
+        from pytubefix import YouTube
+        from pytubefix.cli import on_progress
+        
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        print(f"    ... Trying pytubefix for {video_id} ...")
+        
+        yt = YouTube(url, on_progress_callback=on_progress)
+        ys = yt.streams.get_audio_only()
+        
+        # Download
+        ys.download(filename=output_path)
+        return True
+    except Exception as e:
+        print(f"    x pytubefix failed: {e}")
+        return False
+
+
 def download_audio(video_id: str, output_path: str) -> str:
-    """Download audio from YouTube video using yt-dlp."""
+    """Download audio from YouTube video. Tries pytubefix first, then yt-dlp."""
+    
+    # 1. Try pytubefix first (Better at bypassing 403/Bot checks currently)
+    if download_audio_pytubefix(video_id, output_path):
+        return output_path
+        
+    # 2. Fallback to yt-dlp
+    print("    ... Falling back to yt-dlp ...")
     url = f"https://www.youtube.com/watch?v={video_id}"
     
     # Use yt-dlp to download audio only
@@ -54,6 +81,7 @@ def download_audio(video_id: str, output_path: str) -> str:
         # Bypass "Sign in to confirm you're not a bot"
         "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         "--extractor-args", "youtube:player_client=android",
+        "--add-header", "Referer:https://www.youtube.com/",
         url
     ]
 
@@ -71,7 +99,7 @@ def download_audio(video_id: str, output_path: str) -> str:
         subprocess.run(cmd, check=True, capture_output=True)
         return output_path
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Failed to download audio: {e.stderr.decode()}")
+        raise RuntimeError(f"Failed to download audio (All methods failed): {e.stderr.decode()}")
 
 
 def transcribe_with_groq(audio_path: str) -> str:
