@@ -223,6 +223,15 @@ class ViralVideoPipeline:
                             img, 
                             caption=f"⚡ **Locked V5 Thumbnail**\nTopic: {topic}\n\n_Strict adherence to Master Template_"
                         )
+                        # Re-send the navigation keyboard so user isn't stuck
+                        await self.send_keyboard(
+                            "Use this thumbnail and proceed?",
+                            [
+                                [("✅ Approve Research & Transcript", "viral_transcript_approve")],
+                                [("⚡ Regenerate Thumbnail", "viral_generate_thumbnail_v5")],
+                                [("🔄 Regenerate Transcript", "viral_transcript_regen")]
+                            ]
+                        )
                 else:
                      await self.send_message("✅ Thumbnail generated (check server logs for path).")
             else:

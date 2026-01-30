@@ -285,6 +285,9 @@ def refine_prompt_with_grounding(prompt: str, topic: str, recipe: str = "") -> s
         
         1. **TEXT STRATEGY:**
            - Extract the "emotional punch" from the NEW TOPIC: "{topic}".
+           - **TOP HEADLINE PRIORITY:** If the topic has NUMBERS (e.g. "$36 Trillion", "2026", "50%"), YOU MUST USE THE NUMBER IN THE TOP TEXT.
+             - Bad: "DEATH BOMB"
+             - Good: "$36 TRILLION DEBT"
            - Generate 3 distinct text blocks matching the layout (Top, Left, Right).
            - Text must be short, punchy, and spelled CORRECTLY.
         
