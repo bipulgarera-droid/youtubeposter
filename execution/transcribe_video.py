@@ -48,8 +48,11 @@ def download_audio_pytubefix(video_id: str, output_path: str) -> bool:
         yt = YouTube(url, on_progress_callback=on_progress)
         ys = yt.streams.get_audio_only()
         
-        # Download
-        ys.download(filename=output_path)
+        # Download (Split path correctly)
+        directory = os.path.dirname(output_path)
+        filename = os.path.basename(output_path)
+        
+        ys.download(output_path=directory, filename=filename)
         return True
     except Exception as e:
         print(f"    x pytubefix failed: {e}")
