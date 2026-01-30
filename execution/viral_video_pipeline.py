@@ -396,10 +396,23 @@ class ViralVideoPipeline:
         
         result = transcribe_video(f"https://youtube.com/watch?v={self.video_id}")
         if not result.get("success"):
-            await self.send_message(f"❌ Transcription failed: {result.get('message')}")
-            return
-        
-        self.state["transcript"] = result.get("transcript", "")
+            error_msg = result.get('message', 'Unknown error')
+            print(f"⚠️ Transcription failed: {error_msg}. Falling back to Description.")
+            
+            # FALLBACK: Use Description/Title as "Transcript"
+            fallback_text = self.state['original'].get('description', '')
+            if not fallback_text or len(fallback_text) < 50:
+                 fallback_text = f"Title: {self.state['original']['title']}. " + fallback_text
+            
+            self.state["transcript"] = fallback_text
+            
+            await self.send_message(
+                f"⚠️ *Transcription Failed but we can proceed!*\n"
+                f"Error: {error_msg}\n\n"
+                f"✅ *Falling back to Video Description* for research context."
+            )
+        else:
+            self.state["transcript"] = result.get("transcript", "")
         word_count = len(self.state["transcript"].split())
         
         self.save_checkpoint("transcribe")
