@@ -192,7 +192,8 @@ class ViralVideoPipeline:
     
     async def _generate_locked_thumbnail_early(self):
         """Generate a thumbnail using the Locked Master Template (V5) immediately."""
-        await self.send_message("⚡ Generating V5 Locked Thumbnail... (Using 'Slanted Yellow Wrapper' Template)")
+        if self.bot:
+            await self.send_message("⚡ Generating Thumbnail... (Using 'Trump Center' Template)")
         
         try:
             # Use the title as the topic

@@ -408,9 +408,7 @@ def generate_thumbnail_image_only(prompt: str, output_path: str, reference_image
                 "parts": parts
             }],
             "generationConfig": {
-                "responseModalities": ["TEXT", "IMAGE"],
-                "aspectRatio": "16:9",
-                "sampleCount": 1
+                "responseModalities": ["TEXT", "IMAGE"]
             }
         }
         
