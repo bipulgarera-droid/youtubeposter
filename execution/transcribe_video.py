@@ -76,21 +76,44 @@ def transcribe_with_groq(audio_path: str) -> str:
 
 
 def try_youtube_transcript_api(video_id: str) -> dict:
-    """Try to get transcript from YouTube's built-in captions first."""
+    """Try to get transcript from YouTube's built-in captions (Manual OR Auto-Generated)."""
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
         
-        ytt_api = YouTubeTranscriptApi()
-        fetched_transcript = ytt_api.fetch(video_id)
-        transcript_data = fetched_transcript.to_raw_data()
-        full_text = ' '.join([segment['text'] for segment in transcript_data])
+        # Method 1: Robust 'list_transcripts' (Finds manual or auto-generated)
+        try:
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            
+            # Try to find English (manual or auto)
+            # This is robust: looks for 'en', 'en-US', etc.
+            transcript = transcript_list.find_transcript(['en', 'en-US', 'en-GB'])
+            
+            # Fetch the actual data
+            transcript_data = transcript.fetch()
+            
+            full_text = ' '.join([segment['text'] for segment in transcript_data])
+            return {
+                'success': True,
+                'text': full_text,
+                'method': 'youtube_captions_robust'
+            }
+            
+        except Exception as e:
+            # Fallback to simple fetch if listing fails (rare)
+            print(f"  (Robust transcript fetch failed: {e}, trying simple fetch...)")
+            pass
+
+        # Method 2: Simple fetch (Legacy)
+        fetched_transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        full_text = ' '.join([segment['text'] for segment in fetched_transcript])
         
         return {
             'success': True,
             'text': full_text,
-            'method': 'youtube_captions'
+            'method': 'youtube_captions_simple'
         }
-    except Exception:
+    except Exception as e:
+        print(f"  (All YouTube caption methods failed: {e})")
         return {'success': False}
 
 
