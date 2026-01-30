@@ -80,9 +80,12 @@ def try_youtube_transcript_api(video_id: str) -> dict:
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
         
-        # Method 1: Robust 'list_transcripts' (Finds manual or auto-generated)
+        # Instantiate the API (Required for v1.2.4+)
+        yt_api = YouTubeTranscriptApi()
+        
+        # Method 1: Robust 'list' (Finds manual or auto-generated)
         try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            transcript_list = yt_api.list(video_id)
             
             # Try to find English (manual or auto)
             # This is robust: looks for 'en', 'en-US', etc.
@@ -99,12 +102,14 @@ def try_youtube_transcript_api(video_id: str) -> dict:
             }
             
         except Exception as e:
-            # Fallback to simple fetch if listing fails (rare)
+            # Fallback to simple fetch if listing fails
             print(f"  (Robust transcript fetch failed: {e}, trying simple fetch...)")
             pass
 
         # Method 2: Simple fetch (Legacy)
-        fetched_transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        # Note: In new API this is api.fetch(video_id)
+        fetched_transcript = yt_api.fetch(video_id)
+        # It usually returns the list of dicts directly
         full_text = ' '.join([segment['text'] for segment in fetched_transcript])
         
         return {
