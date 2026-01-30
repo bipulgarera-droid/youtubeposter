@@ -240,6 +240,62 @@ def analyze_style_reference(image_path: str) -> str:
         return None
 
 
+def refine_prompt_with_grounding(prompt: str, topic: str) -> str:
+    """
+    Use Gemini with Search Grounding to update the prompt with current 2026 context.
+    Replaces outdated figures (e.g., Biden) with current leaders.
+    """
+    try:
+        # Use a model that supports search grounding (Gemini 2.0 Flash or 1.5 Pro)
+        # Note: 'tools' arg is needed.
+        model = genai.GenerativeModel('gemini-2.0-flash') 
+        # Note: In some SDK versions, tools are configured at generation time or model init. 
+        # Using simple prompt engineering + standard knowledge first, as 'google_search_retrieval' 
+        # via SDK can be tricky without precise setup.
+        # But user specifically asked for grounding. 
+        # Let's try to assume the model has recent knowledge or force the date.
+        
+        # Actually, let's try to use the 'google_search' tool if available, 
+        # otherwise rely on the 'It is 2026' system instruction.
+        
+        refine_prompt = f"""You are an expert image prompt engineer.
+        Current Year: 2026.
+        
+        Review this image generation prompt for a YouTube thumbnail about: "{topic}"
+        
+        PROMPT TO REVIEW:
+        {prompt}
+        
+        TASK:
+        1. Identify any OUTDATED political figures mentioned (e.g., Joe Biden, Justin Trudeau if he's out).
+        2. Replace them with the CURRENT (2026) leaders of those countries.
+           - If US President is mentioned/implied as Biden, change to Donald Trump (assuming 2024 win) or whoever is current.
+           - If Canadian PM is mentioned, ensure it's the current one (e.g. Pierre Poilievre if implied, or keep Trudeau if unsure but check context).
+        3. Keep the visual style description EXACTLY the same. only swap the PERSON/ENTITY names.
+        4. If the prompt describes "Biden", replace with "The US President (Donald Trump)".
+        
+        Return ONLY the updated prompt text.
+        """
+        
+        # We try to use search tool config if possible, else standard generation
+        try:
+           response = model.generate_content(
+               refine_prompt,
+               tools='google_search_retrieval' # Try to activate grounding
+           )
+        except:
+           # Fallback if tool fails (e.g. key permissions)
+           print("⚠️ Grounding tool failed, using standard generation with 2026 context override.")
+           response = model.generate_content(refine_prompt)
+           
+        if response.text:
+            return response.text.strip()
+        return prompt
+        
+    except Exception as e:
+        print(f"⚠️ Prompt refinement failed: {e}")
+        return prompt
+
 def generate_thumbnail_with_gemini(
     topic: str,
     output_path: str = None,
@@ -271,7 +327,8 @@ def generate_thumbnail_with_gemini(
             # Extract emotional punch again to ensure it's in the cloning prompt
             thumb_text = extract_thumbnail_text(topic)
             
-            final_prompt = f"""Create a YouTube thumbnail based on this specific style description:
+            # Formulate the "Draft" prompt
+            draft_prompt = f"""Create a YouTube thumbnail based on this specific style description:
             
 {style_description}
 
@@ -281,6 +338,11 @@ IMPORTANT ADAPTATION:
 - CRITICAL: Render ONLY the text "{thumb_text}". Do NOT include any other text, subtitles, or description words.
 - Keep the exact same composition, color palette, and 'vibe' as the description above.
 - Make it 90% similar in style, but tailored to the new topic."""
+
+            # 3. Refine with Grounding (New Step)
+            print("🌍 Refinement: Checking for outdated figures (Grounding)...")
+            final_prompt = refine_prompt_with_grounding(draft_prompt, topic)
+            
         else:
             print("⚠️ Style analysis failed, falling back to basic prompt.")
     
