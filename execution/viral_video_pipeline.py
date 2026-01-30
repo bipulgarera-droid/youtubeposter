@@ -890,22 +890,8 @@ Return the new description (max 500 chars), nothing else."""
         """Generate thumbnail and show for approval."""
         await self.send_message("🖼️ Generating thumbnail...")
         
-        # Analyze original thumbnail
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        
-        prompt = f"""Create a thumbnail text overlay for this video.
-Title: {self.state["title"]}
-
-Return ONLY the main text (2-3 words, all caps) for the thumbnail.
-Examples: "IT'S OVER", "THE TRUTH", "ECONOMY DESTROYED"."""
-
-        try:
-            response = model.generate_content(prompt)
-            main_text = response.text.strip().replace('"', '')
-        except:
-            main_text = "IT'S HAPPENING"
-        
-        self.state["thumbnail_analysis"] = {"main_text": main_text}
+        # No need to manually analyze text - generate_thumbnail does it internally
+        # matching the exact logic of new_video_pipeline
         
         # Generate actual thumbnail with correct parameters
         try:
@@ -937,7 +923,7 @@ Examples: "IT'S OVER", "THE TRUTH", "ECONOMY DESTROYED"."""
         if self.bot and self.state.get("thumbnail_path") and os.path.exists(self.state["thumbnail_path"]):
             try:
                 with open(self.state["thumbnail_path"], 'rb') as f:
-                    await self.bot.send_photo(self.chat_id, f, caption=f"🖼️ Thumbnail - {main_text}")
+                    await self.bot.send_photo(self.chat_id, f, caption="🖼️ Thumbnail Generated")
             except Exception as e:
                 await self.send_message(f"⚠️ Could not send thumbnail preview: {e}")
         else:
