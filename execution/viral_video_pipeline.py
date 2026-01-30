@@ -1114,27 +1114,39 @@ Return the new description (max 500 chars), nothing else."""
             await self.send_message("❌ No video found to upload.")
             return
         
-        # Use upload_video_with_captions if SRT available
-        if srt_path and os.path.exists(srt_path):
-            await self.send_message("📝 Uploading with SRT captions...")
-            result = upload_video_with_captions(
-                video_path=video_to_upload,
-                title=self.state["title"],
-                description=self.state["description"],
-                tags=self.state["tags"],
-                thumbnail_path=self.state.get("thumbnail_path"),
-                srt_path=srt_path,
-                category_id="22"
-            )
-        else:
+        try:
+            # Use upload_video_with_captions if SRT available
+            # Note: Removed category_id arg as it caused issues on some deployments (defaults to 22 anyway)
+            if srt_path and os.path.exists(srt_path):
+                await self.send_message("📝 Uploading with SRT captions...")
+                result = upload_video_with_captions(
+                    video_path=video_to_upload,
+                    title=self.state["title"],
+                    description=self.state["description"],
+                    tags=self.state["tags"],
+                    thumbnail_path=self.state.get("thumbnail_path"),
+                    srt_path=srt_path
+                )
+            else:
+                result = upload_video(
+                    video_path=video_to_upload,
+                    title=self.state["title"],
+                    description=self.state["description"],
+                    tags=self.state["tags"],
+                    thumbnail_path=self.state.get("thumbnail_path")
+                )
+        except TypeError as e:
+            # Fallback if arguments mismatch persists
+            await self.send_message(f"⚠️ Upload argument error: {e}. Trying simple upload...")
             result = upload_video(
-                video_path=video_to_upload,
-                title=self.state["title"],
-                description=self.state["description"],
-                tags=self.state["tags"],
-                thumbnail_path=self.state.get("thumbnail_path"),
-                category_id="22"
+                 video_path=video_to_upload,
+                 title=self.state["title"],
+                 description=self.state["description"],
+                 tags=self.state["tags"]
             )
+        except Exception as e:
+            await self.send_message(f"❌ Upload failed with exception: {e}")
+            return
         
         if result.get("success"):
             video_url = result.get("url", f"https://youtube.com/watch?v={result.get('video_id', '')}")
