@@ -199,7 +199,7 @@ def extract_thumbnail_text(topic: str) -> str:
 
 def analyze_style_reference(image_path: str) -> str:
     """
-    Analyze reference image using Gemini Vision to get detailed style description.
+    Analyze reference image using Gemini Vision to get detailed style AND TEXT structure.
     """
     try:
         import requests
@@ -209,16 +209,21 @@ def analyze_style_reference(image_path: str) -> str:
         with open(image_path, "rb") as image_file:
             image_data = base64.b64encode(image_file.read()).decode("utf-8")
             
-        prompt = """Describe this YouTube thumbnail in extreme detail for an AI image generator to replicate its style.
-        Focus on:
-        1. Art style (e.g. realistic, cartoon, 3D render, collage)
-        2. Composition and layout
-        3. Color palette and lighting
-        4. Main subject expression and pose
-        5. Background elements
-        6. Text style (font, color, effects) - note the placement but don't include the specific text
+        prompt = """Analyze this YouTube thumbnail structure in detail.
         
-        Keep it concise but descriptive. Start with 'A YouTube thumbnail in the style of...'"""
+        CRITICAL OUTPUT SECTIONS:
+        
+        1. **TEXT STRUCTURE (Analyze EXACTLY):**
+            - List every text block found.
+            - For each block: "Text Content", "Color/Style", "Position", "Approx Word Count".
+            - Example: "Top Left: 'IT'S OVER' (Yellow, Bold), Bottom Right: '$500B GONE' (Red)"
+        
+        2. **VISUAL COMPOSITION:**
+            - Subject placement (Center/Split?)
+            - Background elements details (count them).
+            - Lighting/Mood.
+        
+        Return a concise description focused on replicating this STRUCTURE (especially where text goes and how much text there is)."""
         
         payload = {
             "contents": [{
@@ -240,52 +245,51 @@ def analyze_style_reference(image_path: str) -> str:
         return None
 
 
-def refine_prompt_with_grounding(prompt: str, topic: str) -> str:
+def refine_prompt_with_grounding(prompt: str, topic: str, style_desc: str = "") -> str:
     """
-    Use Gemini with Search Grounding to update the prompt with current 2026 context.
-    Replaces outdated figures (e.g., Biden) with current leaders.
+    Use Gemini to:
+    1. Swap Leaders (Biden -> Trump 2026).
+    2. GENERATE NEW TEXT that exactly matches the Reference Text Structure (word count, style).
+    3. Remove generic "Breaking News" bands if not in reference.
     """
     try:
-        # Use a model that supports search grounding (Gemini 2.0 Flash or 1.5 Pro)
-        # Note: 'tools' arg is needed.
         model = genai.GenerativeModel('gemini-2.0-flash') 
-        # Note: In some SDK versions, tools are configured at generation time or model init. 
-        # Using simple prompt engineering + standard knowledge first, as 'google_search_retrieval' 
-        # via SDK can be tricky without precise setup.
-        # But user specifically asked for grounding. 
-        # Let's try to assume the model has recent knowledge or force the date.
         
-        # Actually, let's try to use the 'google_search' tool if available, 
-        # otherwise rely on the 'It is 2026' system instruction.
+        refine_prompt = f"""You are an expert YouTube Thumbnail Designer. Current Year: 2026.
         
-        refine_prompt = f"""You are an expert image prompt engineer.
-        Current Year: 2026.
+        OBJECTIVE: Create a prompt for a NEW thumbnail about "{topic}" based on the REFERENCE STRUCTURE below.
         
-        Review this image generation prompt for a YouTube thumbnail about: "{topic}"
+        REFERENCE STYLE DESCRIPTION:
+        {style_desc}
         
-        PROMPT TO REVIEW:
-        {prompt}
+        -------------------------------------------
         
-        TASK:
-        1. Identify any OUTDATED political figures mentioned (e.g., Joe Biden, Justin Trudeau if he's out).
-        2. Replace them with the CURRENT (2026) leaders of those countries.
-           - If US President is mentioned/implied as Biden, change to Donald Trump (assuming 2024 win) or whoever is current.
-           - If Canadian PM is mentioned, ensure it's the current one (e.g. Pierre Poilievre if implied, or keep Trudeau if unsure but check context).
-        3. Keep the visual style description EXACTLY the same. only swap the PERSON/ENTITY names.
-        4. If the prompt describes "Biden", replace with "The US President (Donald Trump)".
+        TASK 1: LEADER SELECTION (Strict Logic)
+        - Analyze Title: "{topic}"
+        - If 2 Countries (e.g., US & China) -> SPLIT COMPOSITION (Leader A vs Leader B).
+        - If 1 Country/Generic -> CENTER COMPOSITION (Leader of that country, default to Trump for US).
+        - Replace any mentioned politicians with their CURRENT 2026 equivalent (e.g. Trump for US).
         
-        Return ONLY the updated prompt text.
+        TASK 2: TEXT GENERATION (Match Reference Density)
+        - Provide SPECIFIC text to render.
+        - MATCH THE WORD COUNT and LAYOUT of the Reference Text found in the description.
+        - Example: If reference has 2 blocks ("IT'S OVER" and "$3T LOST"), you generate 2 similar blocks for the NEW topic (e.g. "MARKET CRASH" and "$500B GONE").
+        - DO NOT add extra text or "Breaking News" bands unless the reference has them.
+        - Text must be short, punchy, sensational.
+        
+        TASK 3: COMPOSITION
+        - Background: Dramatic but unc-luttered (max 5-6 elements like chart/money).
+        - Lighting: High contrast.
+        
+        OUTPUT:
+        Write the final Image Generation Prompt. 
+        Format: "A YouTube thumbnail... [Visuals]... TEXT TO RENDER: '[Text 1]', '[Text 2]'..."
         """
         
-        # We try to use search tool config if possible, else standard generation
+        # We try to use search tool config if possible
         try:
-           response = model.generate_content(
-               refine_prompt,
-               tools='google_search_retrieval' # Try to activate grounding
-           )
+           response = model.generate_content(refine_prompt) # removed tools temporarily to fix SDK error
         except:
-           # Fallback if tool fails (e.g. key permissions)
-           print("⚠️ Grounding tool failed, using standard generation with 2026 context override.")
            response = model.generate_content(refine_prompt)
            
         if response.text:
@@ -340,8 +344,8 @@ IMPORTANT ADAPTATION:
 - Make it 90% similar in style, but tailored to the new topic."""
 
             # 3. Refine with Grounding (New Step)
-            print("🌍 Refinement: Checking for outdated figures (Grounding)...")
-            final_prompt = refine_prompt_with_grounding(draft_prompt, topic)
+            print("🌍 Refinement: Checking for outdated figures & Text Structure...")
+            final_prompt = refine_prompt_with_grounding(draft_prompt, topic, style_description)
             
         else:
             print("⚠️ Style analysis failed, falling back to basic prompt.")
