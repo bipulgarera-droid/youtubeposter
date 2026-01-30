@@ -264,29 +264,30 @@ def refine_prompt_with_grounding(prompt: str, topic: str, recipe: str = "") -> s
         
         refine_prompt = f"""You are an expert YouTube Thumbnail Designer. Current Year: 2026.
         
-        OBJECTIVE: Create a prompt for a NEW thumbnail about "{topic}" that follows this PRECISE RECIPE.
+        OBJECTIVE: Create a prompt for a NEW thumbnail about "{topic}" that utilizes the LAYOUT and STYLE of the reference, but REPLACES all content.
         
-        THE RECIPE (FROM REFERENCE):
+        THE DESIGN RECIPE (FROM REFERENCE):
         {recipe}
         
         -------------------------------------------
         
-        TASK 1: APPLY THE TEXT STRATEGY (CRITICAL)
-        - "Reflect" the reference's text strategy for the new topic.
-        - If Recipe says "2 words, Yellow", you MUST generate 2 words in Yellow.
-        - If Recipe says "Text is a Summary", generate a summary.
-        - MATCH THE FONT COLORS AND BACKGROUND STRIPS EXACTLY.
+        INSTRUCTIONS FOR NEW PROMPT:
         
-        TASK 2: LEADER SELECTION & LAYOUT
-        - Follow the Recipe's layout (e.g. "Split Screen" or "Host Right").
-        - RECOGNIZE CONTEXT:
-           - If 2 Countries mentioned in "{topic}" -> SPLIT COMPOSITION (Leader A vs Leader B).
-           - If 1 Country/Generic -> CENTER or RECIPE DEFAULT.
-        - REPLACE POLITICIANS with 2026 LEADERS (Trump for US).
+        1. **TEXT STRATEGY:**
+           - Extract the "emotional punch" from the NEW TOPIC: "{topic}".
+           - Do NOT use the text from the reference. Use the strategy (e.g. 2 words, yellow).
+           - Example: If ref says "IT'S OVER", and new topic is "Bitcoin Boom", use "IT'S BACK".
         
-        TASK 3: OUTPUT PROMPT
-        - Write a detailed image generation prompt.
-        - Format: "A YouTube thumbnail... [Visuals]... TEXT TO RENDER: '[Text]'"...
+        2. **VISUAL CONTENT (CRITICAL):**
+           - COMPLETELY REPLACE the characters from the reference.
+           - If the reference shows Xi Jinping, do NOT show him unless the new topic is about China.
+           - If new topic is "{topic}", choose RELEVANT subjects (e.g. Trump, Powell, Generic Businessman, Charts).
+           - KEEP the Layout (e.g. Split Screen), but CHANGE the actors.
+        
+        3. **OUTPUT PROMPT:**
+           - Write a highly detailed image generation prompt.
+           - Explicitly state: "Using the composition of the reference image, create a NEW image..."
+           - Format: "A YouTube thumbnail... [New Visuals]... [Style keywords]... TEXT TO RENDER: '[New Punchy Text]'"
         """
         
         # We try to use search tool config if possible
@@ -347,6 +348,9 @@ IMPORTANT ADAPTATION:
         # 3. Refine with Grounding & Recipe
         print("🌍 Refinement: Applying Recipe & 2026 Context...")
         final_prompt = refine_prompt_with_grounding(draft_prompt, topic, recipe)
+        
+        # Append instruction to ensure content replacement
+        final_prompt += " \n\nIMPORTANT: Use the reference image ONLY FOR STYLE/LAYOUT. Do NOT copy the specific persons (like Xi or Kamala) from the reference. Generate NEW characters relevant to the topic."
         
     else:
         print("⚠️ No style reference provided, using basic prompt.")
