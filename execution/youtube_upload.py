@@ -435,7 +435,8 @@ def upload_video_with_captions(
     tags: List[str],
     srt_path: str = None,
     thumbnail_path: str = None,
-    privacy_status: str = 'private'
+    privacy_status: str = 'private',
+    category_id: str = '22'
 ) -> Dict:
     """
     Upload video with thumbnail and captions in one call.
@@ -448,6 +449,7 @@ def upload_video_with_captions(
         srt_path: Optional path to SRT for captions
         thumbnail_path: Optional path to thumbnail
         privacy_status: 'private', 'unlisted', or 'public'
+        category_id: YouTube category ID
     
     Returns:
         Dict with video_id, video_url, success status
@@ -459,7 +461,8 @@ def upload_video_with_captions(
         description=description,
         tags=tags,
         privacy_status=privacy_status,
-        thumbnail_path=thumbnail_path
+        thumbnail_path=thumbnail_path,
+        category_id=category_id
     )
     
     if not result.get('success'):
