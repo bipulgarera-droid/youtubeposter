@@ -248,20 +248,20 @@ class ViralVideoPipeline:
             genai.configure(api_key=os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
             model = genai.GenerativeModel('gemini-2.0-flash')
             
-            prompt = f"""You are a YouTube title expert. Your task is to paraphrase this title while keeping 90% of its meaning and structure.
+            prompt = f"""You are a YouTube title expert. Generate 5 paraphrased versions of this title, each 90% similar to the original.
 
 ORIGINAL TITLE: "{original_title}"
 
-RULES:
+RULES FOR EACH OPTION:
 1. Keep the core topic, numbers, and emotional hooks intact
 2. Change 1-2 words or rearrange slightly for uniqueness
 3. Maintain the same length and style
 4. Keep it SEO-friendly and clickable
 
-ALSO: Extract the 3 MOST IMPORTANT words from the paraphrased title for file naming (no spaces, no special characters).
+ALSO: For the FIRST option, extract the 3 MOST IMPORTANT words for file naming (no spaces, no special characters).
 
 Return ONLY valid JSON in this format:
-{{"paraphrased_title": "Your New Title Here", "keywords": ["word1", "word2", "word3"]}}"""
+{{"options": ["Title Option 1", "Title Option 2", "Title Option 3", "Title Option 4", "Title Option 5"], "keywords": ["word1", "word2", "word3"]}}"""
 
             response = model.generate_content(prompt)
             response_text = response.text.strip()
@@ -276,7 +276,7 @@ Return ONLY valid JSON in this format:
             import json
             result = json.loads(response_text)
             
-            paraphrased = result.get("paraphrased_title", original_title)
+            options = result.get("options", [original_title])
             keywords = result.get("keywords", ["video", "upload", "new"])
             
             # Clean keywords for file naming
@@ -286,21 +286,27 @@ Return ONLY valid JSON in this format:
                 if clean_kw:
                     clean_keywords.append(clean_kw)
             
-            self.state["paraphrased_title"] = paraphrased
+            # Store options and keywords
+            self.state["title_options"] = options
             self.state["title_keywords"] = clean_keywords
+            self.state["paraphrased_title"] = options[0] if options else original_title
             
             self.save_checkpoint("paraphrase_title")
             
+            # Display all options
+            options_text = "\n".join([f"**{i+1}.** {opt}" for i, opt in enumerate(options)])
             await self.send_message(
-                f"📝 *Paraphrased Title:*\n`{paraphrased}`\n\n"
+                f"📝 *Title Options (90% Similar):*\n\n{options_text}\n\n"
                 f"🔑 *Keywords for file naming:* {', '.join(clean_keywords)}"
             )
             
+            # Create selection buttons
             await self.send_keyboard(
-                "Approve this title?",
+                "Select a title:",
                 [
-                    [("✅ Approve Title", "viral_title_approve")],
-                    [("🔄 Regenerate", "viral_title_regen")],
+                    [("1️⃣", "viral_title_select_0"), ("2️⃣", "viral_title_select_1"), ("3️⃣", "viral_title_select_2")],
+                    [("4️⃣", "viral_title_select_3"), ("5️⃣", "viral_title_select_4")],
+                    [("🔄 Regenerate Options", "viral_title_regen")],
                     [("❌ Cancel", "viral_cancel")]
                 ]
             )
@@ -350,7 +356,22 @@ Return ONLY valid JSON in this format:
             await self._generate_locked_thumbnail_early()
             return True
         
-        # Title approval (after thumbnail)
+        # Title selection (after thumbnail) - select from 5 options
+        elif callback_data.startswith("viral_title_select_"):
+            try:
+                idx = int(callback_data.replace("viral_title_select_", ""))
+                options = self.state.get("title_options", [])
+                if 0 <= idx < len(options):
+                    self.state["paraphrased_title"] = options[idx]
+                    self.state["title"] = options[idx]
+                    await self.send_message(f"✅ Selected: `{options[idx]}`")
+                    await self._start_research()
+                else:
+                    await self.send_message("⚠️ Invalid selection")
+            except:
+                await self.send_message("⚠️ Selection error")
+            return True
+        
         elif callback_data == "viral_title_approve":
             self.state["title"] = self.state.get("paraphrased_title", self.state["original"]["title"])
             await self._start_research()
@@ -1163,12 +1184,12 @@ Return the new description (max 500 chars), nothing else."""
                 except Exception as e:
                     print(f"Failed to rename video: {e}")
         
-        # Rename thumbnail for SEO
+        # Rename thumbnail for SEO (same name as video, just different extension)
         thumb_path = self.state.get("thumbnail_path")
         if thumb_path and os.path.exists(thumb_path):
             thumb_dir = os.path.dirname(thumb_path)
             ext = os.path.splitext(thumb_path)[1] or '.jpg'
-            seo_thumb_path = os.path.join(thumb_dir, f"{seo_filename}-thumbnail{ext}")
+            seo_thumb_path = os.path.join(thumb_dir, f"{seo_filename}{ext}")
             if thumb_path != seo_thumb_path:
                 try:
                     import shutil
