@@ -141,6 +141,8 @@ class ViralVideoPipeline:
             "video_path": "",
             "subtitled_video_path": "",
             "thumbnail_path": "",
+            "paraphrased_title": "",  # User-approved paraphrased title
+            "title_keywords": [],     # 3 key words for file naming
             "output_dir": self.output_dir,
             "supabase_job_id": self.supabase_job_id,
             "chat_id": chat_id  # Persist chat_id for recovery
@@ -223,15 +225,8 @@ class ViralVideoPipeline:
                             img, 
                             caption=f"⚡ **Locked V5 Thumbnail**\nTopic: {topic}\n\n_Strict adherence to Master Template_"
                         )
-                        # Re-send the navigation keyboard so user isn't stuck
-                        await self.send_keyboard(
-                            "Use this thumbnail and proceed?",
-                            [
-                                [("✅ Approve Research & Transcript", "viral_transcript_approve")],
-                                [("⚡ Regenerate Thumbnail", "viral_generate_thumbnail_v5")],
-                                [("🔄 Regenerate Transcript", "viral_transcript_regen")]
-                            ]
-                        )
+                        # After thumbnail, proceed to title generation
+                        await self._generate_paraphrased_title()
                 else:
                      await self.send_message("✅ Thumbnail generated (check server logs for path).")
             else:
@@ -241,6 +236,86 @@ class ViralVideoPipeline:
             await self.send_message(f"❌ Thumbnail generation error: {e}")
             import traceback
             traceback.print_exc()
+
+    async def _generate_paraphrased_title(self):
+        """Generate a paraphrased title (90% similar) and extract 3 key words for file naming."""
+        import google.generativeai as genai
+        
+        original_title = self.state["original"]["title"]
+        await self.send_message(f"✏️ Generating paraphrased title from:\n`{original_title}`")
+        
+        try:
+            genai.configure(api_key=os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+            model = genai.GenerativeModel('gemini-2.0-flash')
+            
+            prompt = f"""You are a YouTube title expert. Your task is to paraphrase this title while keeping 90% of its meaning and structure.
+
+ORIGINAL TITLE: "{original_title}"
+
+RULES:
+1. Keep the core topic, numbers, and emotional hooks intact
+2. Change 1-2 words or rearrange slightly for uniqueness
+3. Maintain the same length and style
+4. Keep it SEO-friendly and clickable
+
+ALSO: Extract the 3 MOST IMPORTANT words from the paraphrased title for file naming (no spaces, no special characters).
+
+Return ONLY valid JSON in this format:
+{{"paraphrased_title": "Your New Title Here", "keywords": ["word1", "word2", "word3"]}}"""
+
+            response = model.generate_content(prompt)
+            response_text = response.text.strip()
+            
+            # Clean JSON markers if present
+            if response_text.startswith("```"):
+                response_text = response_text.split("```")[1]
+                if response_text.startswith("json"):
+                    response_text = response_text[4:]
+                response_text = response_text.strip()
+            
+            import json
+            result = json.loads(response_text)
+            
+            paraphrased = result.get("paraphrased_title", original_title)
+            keywords = result.get("keywords", ["video", "upload", "new"])
+            
+            # Clean keywords for file naming
+            clean_keywords = []
+            for kw in keywords[:3]:
+                clean_kw = ''.join(c for c in kw if c.isalnum())
+                if clean_kw:
+                    clean_keywords.append(clean_kw)
+            
+            self.state["paraphrased_title"] = paraphrased
+            self.state["title_keywords"] = clean_keywords
+            
+            self.save_checkpoint("paraphrase_title")
+            
+            await self.send_message(
+                f"📝 *Paraphrased Title:*\n`{paraphrased}`\n\n"
+                f"🔑 *Keywords for file naming:* {', '.join(clean_keywords)}"
+            )
+            
+            await self.send_keyboard(
+                "Approve this title?",
+                [
+                    [("✅ Approve Title", "viral_title_approve")],
+                    [("🔄 Regenerate", "viral_title_regen")],
+                    [("❌ Cancel", "viral_cancel")]
+                ]
+            )
+            
+        except Exception as e:
+            await self.send_message(f"⚠️ Title generation error: {e}. Using original title.")
+            self.state["paraphrased_title"] = original_title
+            self.state["title_keywords"] = original_title.split()[:3]
+            await self.send_keyboard(
+                "Use original title?",
+                [
+                    [("✅ Approve Title", "viral_title_approve")],
+                    [("🔄 Regenerate", "viral_title_regen")]
+                ]
+            )
 
     async def start(self):
         """Start the viral cloning pipeline - fetch video info."""
@@ -270,9 +345,19 @@ class ViralVideoPipeline:
             await self.send_message("❌ Pipeline cancelled.")
             return False
         
-        # Locked Thumbnail Generation (Early access)
+        # Locked Thumbnail Generation (Early access) -> now triggers title generation after
         elif callback_data == "viral_create_thumbnail_locked":
             await self._generate_locked_thumbnail_early()
+            return True
+        
+        # Title approval (after thumbnail)
+        elif callback_data == "viral_title_approve":
+            self.state["title"] = self.state.get("paraphrased_title", self.state["original"]["title"])
+            await self._start_research()
+            return True
+        
+        elif callback_data == "viral_title_regen":
+            await self._generate_paraphrased_title()
             return True
         
         # Research approval
@@ -1053,9 +1138,14 @@ Return the new description (max 500 chars), nothing else."""
         return '-'.join(key_words) if key_words else 'video'
     
     async def _prepare_upload(self):
-        """Show final confirmation before upload. Renames files for SEO."""
-        # Extract SEO keywords for filenames
-        seo_filename = self._extract_seo_keywords(self.state["title"])
+        """Show final confirmation before upload. Renames files for SEO using 3 keywords."""
+        # Use title_keywords from paraphrase step (3 key words)
+        keywords = self.state.get("title_keywords", [])
+        if keywords and len(keywords) >= 2:
+            seo_filename = '-'.join(keywords[:3])
+        else:
+            # Fallback to extracting from title
+            seo_filename = self._extract_seo_keywords(self.state["title"])
         
         # Rename subtitled video for SEO
         video_path = self.state.get("subtitled_video_path") or self.state.get("video_path")
