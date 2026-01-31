@@ -365,6 +365,17 @@ Return ONLY valid JSON in this format:
                     self.state["paraphrased_title"] = options[idx]
                     self.state["title"] = options[idx]
                     await self.send_message(f"✅ Selected: `{options[idx]}`")
+                    
+                    # Show exact tags from viral video (no filtering)
+                    original_tags = self.state.get("original", {}).get("tags", [])
+                    self.state["tags"] = original_tags  # Use exact tags
+                    tags_preview = ", ".join(original_tags[:15]) if original_tags else "None"
+                    await self.send_message(
+                        f"🏷️ *Tags from Viral Video ({len(original_tags)} total):*\n"
+                        f"`{tags_preview}{'...' if len(original_tags) > 15 else ''}`\n\n"
+                        "_These exact tags will be used for your video._"
+                    )
+                    
                     await self._start_research()
                 else:
                     await self.send_message("⚠️ Invalid selection")
@@ -990,46 +1001,37 @@ Return ONLY valid JSON in this format:
             await self.send_message(f"❌ Subtitle error: {str(e)}")
     
     async def _generate_metadata(self):
-        """Generate similar title, description, tags for approval."""
-        await self.send_message("📋 Creating title/description/tags...")
+        """Generate description for approval. Title and tags are already set."""
+        await self.send_message("📋 Creating description with timestamps...")
         
         model = genai.GenerativeModel("gemini-2.0-flash")
         
-        original_title = self.state["original"]["title"]
         original_desc = self.state["original"]["description"]
-        original_tags = self.state["original"]["tags"]
         
-        # Generate similar title (keep 80% same)
-        title_prompt = f"""Rewrite this YouTube title to be 80% similar but unique.
-Keep the same structure, hook words, and topic. Change 2-3 words maximum.
+        # Title is already set from title selection step
+        # Tags are already set from title selection step (exact viral tags)
+        
+        # Generate paraphrased description (90% similar)
+        desc_prompt = f"""Paraphrase this YouTube video description while keeping 90% of its meaning.
+Keep the same structure, main points, and call to action.
+Change 1-2 words per sentence for uniqueness.
 
-Original: {original_title}
+Original:
+{original_desc[:800]}
 
 Rules:
-- Keep the same emotional hook
-- Keep the same topic keywords
-- Change word order slightly or use synonyms
-- Max 70 characters
+- Keep the same length and structure
+- Keep any important keywords, numbers, and topics
+- Make it engaging and hook the viewer
+- Do NOT include timestamps (they will be added separately)
+- Max 400 characters
 
-Return ONLY the new title, nothing else."""
-
-        title_response = model.generate_content(title_prompt)
-        self.state["title"] = title_response.text.strip().strip('"')
-        
-        # Generate similar description
-        desc_prompt = f"""Rewrite this YouTube description to be similar but unique.
-Keep the first 2 sentences almost identical (change 1-2 words).
-Keep the same branding and CTAs as the original.
-
-Original first 500 chars:
-{original_desc[:500]}
-
-Return the new description (max 500 chars), nothing else."""
+Return ONLY the paraphrased description, nothing else."""
 
         desc_response = model.generate_content(desc_prompt)
-        base_description = desc_response.text.strip()
+        paraphrased_desc = desc_response.text.strip()
         
-        # Generate timestamps from SRT and append to description
+        # Generate timestamps from SRT
         timestamps_text = ""
         if generate_timestamps_from_srt and self.state.get("srt_path"):
             try:
@@ -1040,35 +1042,31 @@ Return the new description (max 500 chars), nothing else."""
             except Exception as e:
                 print(f"Timestamp generation failed: {e}")
         
-        # Combine: base description + timestamps
-        if timestamps_text:
-            self.state["description"] = f"{base_description}\n\n📍 Chapters:\n{timestamps_text}"
-        else:
-            self.state["description"] = base_description
+        # Combine in user's format: Title + blank line + paraphrased desc + TIMESTAMPS:
+        final_description = self.state["title"]
+        final_description += "\n\n"
+        final_description += paraphrased_desc
         
-        # Use original tags (filtered) - no hardcoded channel branding
-        vague_tags = {"video", "youtube", "2024", "2025", "2026", "new", "latest", "trending"}
-        good_original_tags = [t for t in original_tags if t.lower() not in vague_tags][:20]
-        self.state["tags"] = good_original_tags
+        if timestamps_text:
+            final_description += "\n\n"
+            final_description += "TIMESTAMPS:\n"
+            final_description += timestamps_text
+        
+        self.state["description"] = final_description
         
         self.save_checkpoint("generate_metadata")
         
-        # Show metadata for approval
-        tags_preview = ", ".join(self.state["tags"][:10])
+        # Show full description for approval (it's the main thing to review now)
         await self.send_message(
-            f"📊 *Metadata Generated*\n\n"
-            f"*Title:*\n{self.state['title']}\n\n"
-            f"*Tags ({len(self.state['tags'])}):* {tags_preview}...\n\n"
-            f"*Description Preview:*\n`{self.state['description'][:200]}...`\n\n"
-            "Approve metadata?"
+            f"📊 *Description Preview:*\n\n```\n{final_description[:800]}{'...' if len(final_description) > 800 else ''}\n```"
         )
         
         self.state["step"] = "approving_metadata"
         
         await self.send_keyboard(
-            "Approve metadata?",
+            "Approve description?",
             [
-                [("✅ Approve Metadata", "viral_metadata_approve")],
+                [("✅ Approve Description", "viral_metadata_approve")],
                 [("🔄 Regenerate", "viral_metadata_regen")]
             ]
         )
