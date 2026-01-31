@@ -133,7 +133,12 @@ BE LITERAL, NOT ABSTRACT. Examples:
 - "BRICS new payment system" → "a world map highlighting Brazil, Russia, India, China, South Africa, with golden trade routes connecting them"
 - "Inflation eroding savings" → "a wallet with money visibly shrinking, grocery prices rising on a store shelf behind"
 
-DO NOT use boats, abstract water imagery, or overly poetic metaphors.
+STRICT RULES:
+- NO animals (no eagles, bears, bulls, dragons, etc.) unless the script literally mentions them
+- NO boats or nautical imagery unless the script is about shipping
+- VARY camera angles: use side angles, over-the-shoulder, aerial views, NOT always front-facing centered portraits
+- People can appear but show them from varied angles (profile, 3/4 view, from behind, wide shots)
+
 Respond with ONLY the visual description, nothing else. Keep it under 40 words."""
 
     try:
