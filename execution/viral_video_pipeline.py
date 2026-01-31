@@ -248,20 +248,31 @@ class ViralVideoPipeline:
             genai.configure(api_key=os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
             model = genai.GenerativeModel('gemini-2.0-flash')
             
-            prompt = f"""You are a YouTube title expert. Generate 5 paraphrased versions of this title, each 90% similar to the original.
+            prompt = f"""You are a YouTube title expert. Generate 5 paraphrased versions of this title.
 
 ORIGINAL TITLE: "{original_title}"
 
-RULES FOR EACH OPTION:
-1. Keep the core topic, numbers, and emotional hooks intact
-2. Change 1-2 words or rearrange slightly for uniqueness
-3. Maintain the same length and style
-4. Keep it SEO-friendly and clickable
+PARAPHRASING RULES:
+1. Keep 90% of the meaning — change only 1-2 words or rearrange slightly
+2. Use the format: Main Statement (Bracketed Detail) — where the bracket completes the thought organically
+3. The bracketed part should be a RESTRUCTURED piece of the original, not something new
+4. Keep all numbers, emotional hooks, and core topic intact
+5. Each option should feel natural, not forced
 
-ALSO: For the FIRST option, extract the 3 MOST IMPORTANT words for file naming (no spaces, no special characters).
+EXAMPLES:
+- Original: "China Just Dumped $688 Billion in U.S. Debt at a Record Loss"
+  Paraphrased: "China Just Sold Off $688 Billion in U.S. Bonds (And Took a Massive Hit)"
+  
+- Original: "The Dollar Is Collapsing Faster Than Expected"
+  Paraphrased: "The Dollar's Collapse Is Accelerating (Faster Than Anyone Predicted)"
 
-Return ONLY valid JSON in this format:
-{{"options": ["Title Option 1", "Title Option 2", "Title Option 3", "Title Option 4", "Title Option 5"], "keywords": ["word1", "word2", "word3"]}}"""
+- Original: "How Warren Buffett Made $150 Billion While Everyone Lost Money"
+  Paraphrased: "Warren Buffett Just Made $150 Billion (While Everyone Else Lost)"
+
+ALSO: Extract the 3 MOST IMPORTANT words from the first option for file naming (alphanumeric only).
+
+Return ONLY valid JSON:
+{{"options": ["Title 1", "Title 2", "Title 3", "Title 4", "Title 5"], "keywords": ["word1", "word2", "word3"]}}"""
 
             response = model.generate_content(prompt)
             response_text = response.text.strip()
