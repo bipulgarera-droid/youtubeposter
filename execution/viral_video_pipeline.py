@@ -335,9 +335,15 @@ class ViralVideoPipeline:
             await self._add_subtitles()
             return True
         
-        # Metadata approval
+        # Metadata approval - skip to upload prep (V5 thumbnail already generated early)
         elif callback_data == "viral_metadata_approve":
-            await self._generate_thumbnail()
+            # Check if V5 thumbnail already exists (generated after transcript)
+            if self.state.get("thumbnail_path") and os.path.exists(self.state["thumbnail_path"]):
+                await self.send_message("✅ Using V5 Thumbnail (Trump Center) generated earlier")
+                await self._prepare_upload()
+            else:
+                # Fallback: generate if somehow missing (shouldn't happen)
+                await self._generate_thumbnail()
             return True
         
         elif callback_data == "viral_metadata_regen":
