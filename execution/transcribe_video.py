@@ -121,6 +121,46 @@ def transcribe_with_groq(audio_path: str) -> str:
     return transcription
 
 
+def try_supadata_transcript(video_id: str) -> dict:
+    """Try to get transcript from Supadata API (third-party, bypasses bot detection)."""
+    api_key = os.environ.get("SUPADATA_API_KEY", "")
+    if not api_key:
+        return {'success': False, 'error': 'SUPADATA_API_KEY not set'}
+    
+    try:
+        import requests
+        
+        url = f"https://api.supadata.ai/v1/youtube/transcript"
+        headers = {"x-api-key": api_key}
+        params = {"videoId": video_id, "lang": "en"}
+        
+        print(f"  → Trying Supadata API for transcript...")
+        response = requests.get(url, headers=headers, params=params, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Supadata returns content as a list of segments with 'text' field
+            if isinstance(data.get('content'), list):
+                full_text = ' '.join([seg.get('text', '') for seg in data['content']])
+            else:
+                full_text = data.get('content', '')
+            
+            if full_text and len(full_text) > 50:
+                print(f"  ✓ Got transcript from Supadata ({len(full_text.split())} words)")
+                return {
+                    'success': True,
+                    'text': full_text,
+                    'method': 'supadata_api'
+                }
+        
+        print(f"  x Supadata returned status {response.status_code}")
+        return {'success': False, 'error': f'Status {response.status_code}'}
+        
+    except Exception as e:
+        print(f"  x Supadata API failed: {e}")
+        return {'success': False, 'error': str(e)}
+
+
 def try_youtube_transcript_api(video_id: str) -> dict:
     """Try to get transcript from YouTube's built-in captions (Manual OR Auto-Generated)."""
     try:
@@ -185,7 +225,16 @@ def get_transcript(video_id: str) -> dict:
             'method': 'youtube_captions'
         }
     
-    print("  → YouTube captions unavailable, using Groq Whisper...")
+    # Second: Try Supadata API (bypasses bot detection, no audio download needed)
+    supadata_result = try_supadata_transcript(video_id)
+    if supadata_result.get('success'):
+        return {
+            'text': supadata_result['text'],
+            'word_count': len(supadata_result['text'].split()),
+            'method': 'supadata_api'
+        }
+    
+    print("  → All caption APIs failed, trying Groq Whisper audio transcription...")
     
     if not GROQ_API_KEY:
         raise RuntimeError("GROQ_API_KEY not set - cannot transcribe via Whisper")
