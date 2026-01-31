@@ -217,6 +217,10 @@ class ViralVideoPipeline:
             )
             
             if output_path and os.path.exists(output_path):
+                # CRITICAL: Save thumbnail path to state for upload
+                self.state["thumbnail_path"] = output_path
+                self.save_checkpoint("thumbnail_v5")
+                
                 # Send the image
                 if self.bot:
                     with open(output_path, 'rb') as img:
