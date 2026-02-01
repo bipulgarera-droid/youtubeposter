@@ -37,6 +37,10 @@ from execution.youtube_video_info import get_video_details
 from execution.transcribe_video import transcribe_video
 from execution.research_agent import deep_research, format_research_for_script
 
+# NEW: Entity extraction and structure analysis
+from execution.extract_transcript_entities import extract_entities_and_claims, format_entities_for_display
+from execution.analyze_viral_structure import analyze_viral_structure, format_beat_map_for_telegram, get_beat_guidance_for_script
+
 # NEW: Use correct generation modules (same as new_video_pipeline)
 from execution.generate_outline import generate_outline, format_outline_for_telegram, format_outline_for_script
 from execution.generate_narrative_script import generate_narrative_script
@@ -588,8 +592,44 @@ Return ONLY valid JSON:
         )
     
     async def _start_research(self):
-        """Research deeper using transcript and show results."""
-        await self.send_message("🔍 Researching topic in depth...")
+        """Research deeper using transcript entities and structure analysis."""
+        
+        # Step 1: Extract entities from transcript
+        await self.send_message("🔬 Extracting entities and claims from transcript...")
+        
+        extracted = extract_entities_and_claims(
+            transcript=self.state["transcript"],
+            title=self.state["original"]["title"]
+        )
+        
+        if extracted.get("success"):
+            self.state["extracted_entities"] = extracted
+            # Show extracted entities
+            entities_display = format_entities_for_display(extracted)
+            await self.send_message(entities_display)
+        else:
+            await self.send_message("⚠️ Entity extraction failed, using fallback research")
+            self.state["extracted_entities"] = None
+        
+        # Step 2: Analyze viral video structure
+        await self.send_message("📊 Analyzing viral video structure for pacing...")
+        
+        beat_map = analyze_viral_structure(
+            transcript=self.state["transcript"],
+            title=self.state["original"]["title"]
+        )
+        
+        if beat_map.get("success"):
+            self.state["beat_map"] = beat_map
+            # Show beat map
+            beat_display = format_beat_map_for_telegram(beat_map)
+            await self.send_message(beat_display)
+        else:
+            await self.send_message("⚠️ Structure analysis failed, using default pacing")
+            self.state["beat_map"] = None
+        
+        # Step 3: Deep research using extracted entities
+        await self.send_message("🔍 Researching topic in depth (using extracted entities)...")
         
         topic = self.state["original"]["title"]
         
@@ -599,7 +639,8 @@ Return ONLY valid JSON:
             source_article={
                 "title": self.state["original"]["title"],
                 "snippet": self.state["transcript"][:2000]
-            }
+            },
+            extracted_entities=self.state.get("extracted_entities")  # NEW: Pass entities
         )
         
         self.state["research"] = research
@@ -607,16 +648,19 @@ Return ONLY valid JSON:
         
         self.save_checkpoint("research")
         
-        # Show research facts (same format as new_video_pipeline)
+        # Show research facts
         raw_facts = research.get("raw_facts", "")
         display_facts = raw_facts[:1500] if len(raw_facts) > 1500 else raw_facts
         
         if not display_facts:
             display_facts = "Research complete. Key findings compiled."
         
+        # Show counter-facts if available
+        counter_count = len(research.get("counter_facts", []))
         await self.send_message(
             f"📚 *Research Facts:*\n\n{display_facts}...\n\n"
-            f"📰 Found {len(research.get('recent_news', []))} related articles"
+            f"📰 Found {len(research.get('recent_news', []))} related articles\n"
+            f"⚖️ Found {counter_count} counter-argument sources"
         )
         
         self.state["step"] = "approving_research"
@@ -631,13 +675,14 @@ Return ONLY valid JSON:
         )
     
     async def _generate_outline(self):
-        """Generate 7-chapter outline from research (NEW - same as new_video_pipeline)."""
-        await self.send_message("📋 Generating 7-chapter outline...")
+        """Generate outline from research with viral pacing guidance."""
+        await self.send_message("📋 Generating outline (using viral pacing guide)...")
         
         result = generate_outline(
             title=self.state["title"],
             research=self.state["research"],
-            country=None
+            country=None,
+            beat_map=self.state.get("beat_map")  # NEW: Pass Beat Map for pacing
         )
         
         if not result.get("success"):

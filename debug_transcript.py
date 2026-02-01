@@ -1,7 +1,14 @@
 from youtube_transcript_api import YouTubeTranscriptApi
 import sys
 
-video_id = "v5ZsgVyTXj8"
+video_id = "v5ZsgVyTXj8" # v5ZsgVyTXj8 (The failing video)
+print(f"--- Debugging Transcript for {video_id} ---")
+
+# 1. Test Instance API
+# test_instance_api(video_id) # This function is not defined in the original code, commenting out for syntax correctness.
+
+# 2. Test Fallback (yt-dlp) - mocked or real?
+# For now, just test the API as that's the primary method.
 
 print(f"Testing transcript for {video_id}...")
 

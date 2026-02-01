@@ -1,83 +1,60 @@
 #!/usr/bin/env python3
 """
-Article Content Fetcher using Camoufox
-Fetches and extracts readable content from article URLs using stealth browser.
+Article Content Fetcher using Jina Reader
+Fetches and extracts readable content from article URLs using Jina's AI reader.
 """
 
 import os
+import requests
 from typing import Optional, List, Dict
-import concurrent.futures
 import time
 
-# Try to import camoufox, fall back to requests if not available
-try:
-    from camoufox.sync_api import Camoufox
-    CAMOUFOX_AVAILABLE = True
-except ImportError:
-    CAMOUFOX_AVAILABLE = False
-    print("Warning: Camoufox not available, falling back to requests")
+# Jina Reader base URL
+JINA_READER_URL = "https://r.jina.ai"
 
 
-def fetch_article_with_camoufox(url: str, timeout: int = 15000) -> Optional[str]:
+def fetch_article_with_jina(url: str, timeout: int = 45) -> Optional[str]:
     """
-    Fetch and extract main content from an article URL using Camoufox.
-    Returns cleaned text content or None if failed.
+    PRIMARY METHOD: Fetch article content using Jina Reader.
+    Jina Reader handles JS, paywalls, and extracts clean markdown.
     """
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        'Accept': 'text/plain',
+    }
+    
     try:
-        with Camoufox(headless=True) as browser:
-            page = browser.new_page()
-            page.goto(url, timeout=timeout)
+        jina_url = f"{JINA_READER_URL}/{url}"
+        response = requests.get(jina_url, headers=headers, timeout=timeout)
+        
+        if response.status_code == 200:
+            content = response.text
             
-            # Wait for content to load
-            page.wait_for_load_state('domcontentloaded')
-            time.sleep(1)  # Small delay for JS to render
+            # Jina returns markdown - clean it up for our use
+            # Remove markdown images and links formatting but keep text
+            import re
+            content = re.sub(r'!\[.*?\]\(.*?\)', '', content)  # Remove images
+            content = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', content)  # Keep link text
             
-            # Try to find main article content
-            selectors = [
-                'article',
-                '[role="main"]',
-                '.article-content',
-                '.post-content', 
-                '.entry-content',
-                '.story-body',
-                '.article-body',
-                '#article-body',
-                '.content-body',
-                'main',
-            ]
-            
-            content = ""
-            for selector in selectors:
-                try:
-                    element = page.query_selector(selector)
-                    if element:
-                        content = element.inner_text()
-                        if len(content) > 200:
-                            break
-                except:
-                    continue
-            
-            # Fallback to body
-            if len(content) < 200:
-                content = page.query_selector('body').inner_text()
-            
-            # Clean up
-            page.close()
-            
-            # Limit content length (8000 chars ≈ 1200 words per article)
-            if len(content) > 8000:
-                content = content[:8000] + '...'
+            # Limit content length (10000 chars ≈ 1500 words per article)
+            if len(content) > 10000:
+                content = content[:10000] + '...'
             
             return content if len(content) > 100 else None
+        else:
+            print(f"  ⚠️ Jina returned {response.status_code} for {url[:50]}")
+            return None
             
+    except requests.Timeout:
+        print(f"  ❌ Jina timeout for {url[:50]}...")
+        return None
     except Exception as e:
-        print(f"  ❌ Camoufox error for {url[:50]}...: {str(e)[:50]}")
+        print(f"  ❌ Jina error for {url[:50]}...: {str(e)[:50]}")
         return None
 
 
 def fetch_article_with_requests(url: str, timeout: int = 10) -> Optional[str]:
-    """Fallback: Fetch using requests + BeautifulSoup."""
-    import requests
+    """FALLBACK: Fetch using requests + BeautifulSoup when Jina fails."""
     from bs4 import BeautifulSoup
     
     headers = {
@@ -96,38 +73,37 @@ def fetch_article_with_requests(url: str, timeout: int = 10) -> Optional[str]:
         paragraphs = soup.find_all('p')
         content = '\n'.join([p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 50])
         
-        if len(content) > 3000:
-            content = content[:3000] + '...'
+        if len(content) > 5000:
+            content = content[:5000] + '...'
         
         return content if len(content) > 100 else None
         
     except Exception as e:
-        print(f"  ❌ Requests error for {url[:50]}...: {str(e)[:50]}")
+        print(f"  ❌ Requests fallback error for {url[:50]}...: {str(e)[:50]}")
         return None
 
 
 def fetch_article_content(url: str) -> Optional[str]:
-    """Fetch article content, trying camoufox first, then requests fallback."""
-    if CAMOUFOX_AVAILABLE:
-        content = fetch_article_with_camoufox(url)
-        if content:
-            return content
+    """Fetch article content, trying Jina Reader first, then requests fallback."""
+    # PRIMARY: Jina Reader (handles JS, paywalls, etc.)
+    content = fetch_article_with_jina(url)
+    if content:
+        return content
     
-    # Fallback to requests
+    # FALLBACK: Simple requests
     return fetch_article_with_requests(url)
 
 
-def fetch_multiple_articles(articles: List[Dict], max_articles: int = 15) -> List[Dict]:
+def fetch_multiple_articles(articles: List[Dict], max_articles: int = 25) -> List[Dict]:
     """
-    Fetch content for multiple articles.
-    Uses Camoufox for better extraction.
+    Fetch content for multiple articles using Jina Reader.
+    All fetched articles are passed forward - not truncated.
     """
-    print(f"\n📖 Fetching content from {min(len(articles), max_articles)} articles with Camoufox...")
+    print(f"\n📖 Fetching content from {min(len(articles), max_articles)} articles with Jina Reader...")
     
     articles_to_fetch = articles[:max_articles]
     enriched_articles = []
     
-    # Process sequentially for camoufox (browser context)
     for i, article in enumerate(articles_to_fetch):
         url = article.get('url', '')
         if not url:
@@ -144,14 +120,18 @@ def fetch_multiple_articles(articles: List[Dict], max_articles: int = 15) -> Lis
             print(f"      ⚠️ Using snippet")
         
         enriched_articles.append(article)
+        
+        # Rate limit - Jina can handle ~60/min, but be safe
+        if i < len(articles_to_fetch) - 1:
+            time.sleep(0.5)
     
-    # Add remaining articles with just snippets
+    # Add remaining articles with just snippets (if any beyond max)
     for article in articles[max_articles:]:
         article['content'] = article.get('snippet', '')
         enriched_articles.append(article)
     
     successful = len([a for a in enriched_articles if len(a.get('content', '')) > 200])
-    print(f"\n✅ Successfully fetched content from {successful} articles")
+    print(f"\n✅ Successfully fetched content from {successful} articles (all passed forward)")
     
     return enriched_articles
 

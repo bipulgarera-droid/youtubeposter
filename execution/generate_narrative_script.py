@@ -133,6 +133,19 @@ FORWARD MOMENTUM (ESSENTIAL):
 - The viewer has ALREADY HEARD the previous sections. Don't summarize. Don't remind. PROGRESS.
 - If two sections feel similar, CUT one and make the other DEEPER with fresh details.
 
+ANTI-FLUFF (ZERO TOLERANCE):
+- Every paragraph must introduce NEW information or NEW perspective. If not, DELETE IT.
+- History is NOT a section — it's evidence. Use it to SUPPORT claims, never standalone.
+- Ask: "Would a viewer skip this paragraph because they've already heard it?" If yes, DELETE.
+- Filler phrases are BANNED: "Think about that", "Let that sink in", "It's worth noting", "Here's the thing"
+- If your beat feels like it overlaps with an earlier section, CUT the overlap and go DEEPER.
+
+BALANCE (REQUIRED):
+- Present the main argument AND its strongest counter-argument
+- Acknowledge nuance — not everything is doom and gloom
+- End with EMPOWERMENT — what can the viewer DO about this?
+- The viewer should feel REWARDED at the end, not just scared
+
 PACING EXAMPLES (match this density):
 - BAD: "This creates a vicious cycle. The cycle works like this. First, the government..." (too slow, repeats)
 - GOOD: "The cycle is brutal. Deficit. Print. Devalue. Your savings evaporate in months." (punchy, forward)

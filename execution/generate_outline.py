@@ -18,7 +18,8 @@ if GEMINI_API_KEY:
 def generate_outline(
     title: str,
     research: Dict,
-    country: Optional[str] = None
+    country: Optional[str] = None,
+    beat_map: Optional[Dict] = None
 ) -> Dict:
     """
     Generate a 7-chapter outline from research.
@@ -27,6 +28,7 @@ def generate_outline(
         title: The video title
         research: Research dict with raw_facts, recent_news, etc.
         country: Optional country focus
+        beat_map: Optional Beat Map from analyze_viral_structure for pacing guidance
     
     Returns:
         Dict with outline structure
@@ -43,6 +45,29 @@ def generate_outline(
         for n in research.get("recent_news", [])[:8]
     ])
     
+    # Build pacing guidance from Beat Map if available
+    pacing_guidance = ""
+    if beat_map and beat_map.get("success"):
+        hook = beat_map.get("hook", {})
+        tension = beat_map.get("tension_build", {})
+        mech = beat_map.get("mechanism", {})
+        res = beat_map.get("resolution", {})
+        
+        pacing_guidance = f"""
+=== PACING GUIDE (from viral video analysis) ===
+HOOK: Use this technique: {hook.get('technique', 'shocking_stat')}
+  - Elements: {', '.join(hook.get('elements', ['time anchor', 'personal stake']))}
+  - Why it works: {hook.get('why_it_works', 'Creates immediate engagement')}
+
+TENSION BUILD: {tension.get('technique', 'escalate stakes')}
+  - Open loops: {', '.join(tension.get('open_loops', ['Promise revelation'])[:2])}
+
+MECHANISM: Reveal in {mech.get('location', 'Middle')} using {mech.get('technique', 'analogy')}
+
+RESOLUTION: End with {res.get('technique', 'empowerment')} - viewer agency: {res.get('viewer_agency', 'They can take action')}
+===
+"""
+    
     prompt = f"""Generate a YouTube video script OUTLINE for this topic.
 
 TITLE: {title}
@@ -54,63 +79,61 @@ RESEARCH FACTS:
 RECENT NEWS CONTEXT:
 {news_context}
 
+{pacing_guidance}
+
 ---
 
 OUTLINE STRUCTURE (follow EXACTLY):
 
-## HOOK
-- Vivid scene-setting in second person ("Imagine for a second that you are...")
-- One shocking stat or number
-- Promise of revelation
+## HOOK (First 30 seconds - CRITICAL for retention)
+- Use the pacing guide's hook technique if provided
+- Vivid scene-setting in second person ("Imagine for a second...")
+- One shocking stat or number from research
+- Open loop: Promise what they'll learn
 
-## CONTEXT
-- Historical origin (go back 30-50 years)
-- The "original sin" of the problem
-- How we got to today
+## STAKES (30s - 2min - Build tension)
+- Connect to viewer's money, life, future
+- Escalate the problem
+- Create urgency
+
+## MECHANISM
+- The "how does this work" section
+- Give it a memorable name if possible
+- Use analogy to explain complex concepts
 
 ## CHAPTER 1: [Title], [Subtitle]
-- Main point
-- Key data/stat to cite
+- Main point + Key data/stat
 - Analogy to make it relatable
 
 ## CHAPTER 2: [Title], [Subtitle]
-- Main point
-- Key data/stat to cite
+- Main point + Key data/stat
 - Analogy to make it relatable
 
 ## CHAPTER 3: [Title], [Subtitle]
-- Main point
-- Key data/stat to cite
+- Main point + Key data/stat
 - Analogy to make it relatable
 
 ## CHAPTER 4: [Title], [Subtitle]
-- Main point
-- Key data/stat to cite
+- Main point + Key data/stat
 - Analogy to make it relatable
 
 ## CHAPTER 5: [Title], [Subtitle]
-- Main point
-- Key data/stat to cite
+- Main point + Key data/stat
 - Analogy to make it relatable
 
-## CHAPTER 6: [Title], [Subtitle]
-- Main point
-- Key data/stat to cite
-- Analogy to make it relatable
-
-## CHAPTER 7: [Title], [Subtitle]
-- Main point
-- Key data/stat to cite
-- Analogy to make it relatable
+## COUNTER-ARGUMENTS (Balance section)
+- Present the opposing view
+- Address it with data
+- Acknowledge nuance
 
 ## FINAL THOUGHTS
-- Summary of the 7 problems
-- Is there any hope?
-- Return agency to viewer
+- Summary of key points
+- Is there hope?
+- Return agency to viewer - what can THEY do?
 
 ## OUTRO
 - Question for comments
-- Like button CTA
+- Natural CTA
 
 ---
 
@@ -118,8 +141,10 @@ RULES:
 1. Chapter titles should be punchy and memorable (e.g., "The Russian Needle", "The Debt Trap")
 2. Subtitles explain the chapter (e.g., "Addicted to Cheap Gas", "Living on Borrowed Time")
 3. Each chapter must cite at least ONE specific number/stat from the research
-4. Build narrative tension - each chapter should be worse than the last until Final Thoughts
+4. Build narrative tension - each chapter escalates until Counter-Arguments/Final Thoughts provide relief
 5. Use vivid analogies (gaming metaphors, everyday comparisons)
+6. NO STANDALONE HISTORY SECTION - weave historical context into chapters only when it supports a claim
+7. End with EMPOWERMENT - viewer should feel rewarded, not just scared
 
 Generate the outline now:"""
 
