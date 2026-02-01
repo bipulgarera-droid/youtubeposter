@@ -300,6 +300,7 @@ OBJECTIVE: Create a prompt for a NEW thumbnail about "{topic}" following the LOC
 - Close-up portrait, facing forward or slightly angled
 - Well-lit, clear features
 - Takes up center 40% of image
+- IMPORTANT: Add a subtle RED GLOW/OUTLINE around Trump (like a red halo effect) to make him pop from background
 
 **BACKGROUND:**
 - Relevant to "{topic}" but BEHIND all elements
@@ -308,10 +309,17 @@ OBJECTIVE: Create a prompt for a NEW thumbnail about "{topic}" following the LOC
 
 ===== TEXT CONTENT TO GENERATE =====
 
-Given the topic "{topic}":
+Analyze the topic "{topic}" and generate CONTEXTUAL text:
 1. TOP HEADLINE: Already set to "{top_text}"
-2. LEFT BOX: Generate 2-word punchy phrase (e.g., "TRADE WAR", "DOLLAR DEAD", "BANK PANIC")
-3. RIGHT BOX: Generate 2-word punchy phrase (e.g., "SECRET DEAL", "IT'S OVER", "NO ESCAPE")
+2. LEFT BOX: Extract the MAIN ACTION/CONFLICT (e.g., if about trade → "TRADE WAR", if about collapse → "IT'S OVER")
+3. RIGHT BOX: Extract the HIDDEN/EMOTIONAL element from the title
+   - If title mentions "hiding" or "secret" → use "SECRET DEAL" or "THEY LIED"
+   - If title mentions "loss" or "crash" → use "TOTAL LOSS" or "NO ESCAPE"
+   - MUST relate directly to the second half of the title (the hook part)
+
+CRITICAL: The RIGHT BOX text must feel like it reveals the hidden element from the title. Example:
+- "Here's What They're Hiding" → RIGHT BOX: "SECRET DEAL" ✓
+- "Here's What They're Hiding" → RIGHT BOX: "NO ESCAPE" ✗ (too generic)
 
 ===== OUTPUT PROMPT =====
 
