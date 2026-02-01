@@ -16,7 +16,8 @@ def generate_title_options(
     inspiration_title: str,
     channel_type: str,
     api_key: str,
-    num_options: int = 3
+    num_options: int = 5,
+    key_figure: str = None
 ) -> Dict:
     """
     Generate CTR-optimized title options using Gemini.
@@ -28,6 +29,7 @@ def generate_title_options(
         channel_type: Type of channel (e.g., "Geopolitics", "Tech Review")
         api_key: Gemini API key
         num_options: Number of title options to generate
+        key_figure: Optional key money figure to include (e.g., "$917B")
     
     Returns:
         Dict with success status and list of title options
@@ -41,6 +43,19 @@ def generate_title_options(
     # Check if content summary has specific instructions
     has_custom_instructions = outline and len(outline.strip()) > 20
     
+    # Key figure instruction
+    key_figure_instruction = ""
+    if key_figure:
+        key_figure_instruction = f"""
+**KEY FIGURE REQUIREMENT:**
+You MUST organically include this figure in AT LEAST 3 of your {num_options} titles: "{key_figure}"
+- DO NOT just tack it on at the end
+- Work it INTO the title naturally, as if it's the news hook
+- Examples of BAD integration: "Title Here ({key_figure})" or "Title Here - {key_figure}"
+- Examples of GOOD integration: "The {key_figure} Crisis Nobody Saw Coming" or "How {key_figure} Just Vanished Overnight"
+- The figure should feel like THE REASON someone would click
+"""
+    
     prompt = f"""You are a YouTube title expert. Generate {num_options} title options for a video.
 
 **REFERENCE TITLE (The "Vibe" & Length Guide):**
@@ -51,6 +66,7 @@ Target Length: ~{ref_char_count} chars
 
 **CONTENT CONTEXT:**
 {outline[:500] if outline else 'Not provided'}
+{key_figure_instruction}
 
 **INSTRUCTIONS:**
 1. **SAME PUNCH, NEW ANGLE**: Rewrite the reference title to fit my channel angle, but keep the exact same "punchiness" and rhythm.
@@ -70,7 +86,7 @@ Target Length: ~{ref_char_count} chars
 
 **OUTPUT FORMAT:**
 Return exactly {num_options} titles as a JSON array:
-["Title 1", "Title 2", "Title 3"]
+["Title 1", "Title 2", "Title 3", "Title 4", "Title 5"]
 
 Only output the JSON array, nothing else."""
 

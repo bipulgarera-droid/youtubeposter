@@ -253,60 +253,76 @@ def analyze_thumbnail_recipe(image_path: str, title_context: str = "") -> str:
         return None
 
 
-def refine_prompt_with_grounding(prompt: str, topic: str, recipe: str = "") -> str:
+def refine_prompt_with_grounding(prompt: str, topic: str, recipe: str = "", key_figure: str = None) -> str:
     """
-    Use Gemini to:
-    1. Apply the DESIGN RECIPE from the reference (Text Strategy + Layout).
-    2. Swap Leaders (Biden -> Trump 2026).
+    Use Gemini to create the thumbnail prompt with LOCKED design specs.
+    Key figure (money amount) should be passed if available from transcript.
     """
     try:
         model = genai.GenerativeModel('gemini-2.0-flash') 
         
+        # Extract or use provided key figure
+        top_text = key_figure if key_figure else extract_key_figure_from_topic(topic)
+        
         refine_prompt = f"""You are an expert YouTube Thumbnail Designer. Current Year: 2026.
         
-        OBJECTIVE: Create a prompt for a NEW thumbnail about "{topic}" that follows the MASTER TEMPLATE style.
+OBJECTIVE: Create a prompt for a NEW thumbnail about "{topic}" following the LOCKED MASTER TEMPLATE.
+
+===== LOCKED DESIGN SPECIFICATIONS (DO NOT DEVIATE) =====
+
+**TOP HEADLINE (REQUIRED):**
+- TEXT: "{top_text}" (This is MANDATORY - use this exact text)
+- FONT: Bold Impact or similar, ALL CAPS
+- COLOR: Bright Yellow (#FFD700) with thin red outline/shadow
+- POSITION: Top center of image, spanning full width
+- SIZE: Very large, about 15% of image height
+
+**LEFT TEXT BOX (LOCKED SIZE):**
+- SIZE: Approximately 130px wide x 65px tall (aspect ratio 2:1)
+- POSITION: Left side of Trump, vertically centered with his shoulder
+- BACKGROUND: Solid Black (#000000)
+- BORDER: 3px bright red (#FF0000) outline
+- TEXT: 2 words max, stacked if needed
+- TEXT COLOR: Bright Yellow (#FFD700), bold, centered
+- DO NOT make this box taller than 65-70px proportionally
+
+**RIGHT TEXT BOX (LOCKED SIZE - SAME AS LEFT):**
+- SIZE: Approximately 130px wide x 65px tall (IDENTICAL to left box)
+- POSITION: Right side of Trump, vertically centered with his shoulder (symmetric to left)
+- BACKGROUND: Solid Black (#000000)  
+- BORDER: 3px bright red (#FF0000) outline
+- TEXT: 2 words max, stacked if needed
+- TEXT COLOR: White (#FFFFFF), bold, centered
+- MUST BE SAME SIZE AS LEFT BOX
+
+**CENTER (TRUMP):**
+- Donald Trump, serious/concerned expression
+- Close-up portrait, facing forward or slightly angled
+- Well-lit, clear features
+- Takes up center 40% of image
+
+**BACKGROUND:**
+- Relevant to "{topic}" but BEHIND all elements
+- Include: charts, maps, fire, smoke, documents as appropriate
+- Keep it busy but not distracting from Trump and text boxes
+
+===== TEXT CONTENT TO GENERATE =====
+
+Given the topic "{topic}":
+1. TOP HEADLINE: Already set to "{top_text}"
+2. LEFT BOX: Generate 2-word punchy phrase (e.g., "TRADE WAR", "DOLLAR DEAD", "BANK PANIC")
+3. RIGHT BOX: Generate 2-word punchy phrase (e.g., "SECRET DEAL", "IT'S OVER", "NO ESCAPE")
+
+===== OUTPUT PROMPT =====
+
+Write a detailed image generation prompt that:
+1. Uses ALL the locked specifications above (box sizes, colors, positions)
+2. Explicitly states "Left box is 130x65px" and "Right box is 130x65px (same size)"
+3. Includes: "High quality, 8k, photorealistic Trump, clear crisp text"
+4. Ends with: "FULL BLEED 16:9 IMAGE. NO BLACK BORDERS. Boxes must be IDENTICAL sizes."
+"""
         
-        THE MASTER TEMPLATE RULES (STRICT):
-        1. **CHARACTER:** ALWAYS Donald Trump (2026 version). 
-           - Position: CENTER, close-up portrait. 
-           - Expression: Tweaked to match the topic (e.g. Concerned, Angry, Warning, Serious).
-        2. **LAYOUT:**
-           - TOP: Big Headline Text.
-           - LEFT CENTER: A text box with 2-3 words.
-           - RIGHT CENTER: A text box with 2-3 words.
-           - BACKGROUND: Graphics related to the topic (e.g. Stock charts, Fire, Debt Clock) behind Trump.
-        
-        THE DESIGN RECIPE (FROM REFERENCE):
-        {recipe}
-        
-        -------------------------------------------
-        
-        INSTRUCTIONS FOR NEW PROMPT:
-        
-        1. **TEXT STRATEGY:**
-           - Extract the "emotional punch" from the NEW TOPIC: "{topic}".
-           - **TOP HEADLINE PRIORITY:** If the topic has NUMBERS (e.g. "$36 Trillion", "2026", "50%"), YOU MUST USE THE NUMBER IN THE TOP TEXT.
-             - Bad: "DEATH BOMB"
-             - Good: "$36 TRILLION DEBT"
-           - Generate 3 distinct text blocks matching the layout (Top, Left, Right).
-           - Text must be short, punchy, and spelled CORRECTLY.
-        
-        2. **VISUAL CONTENT:**
-           - Subject: Donald Trump (Center).
-           - Background: RELEVANT to "{topic}". If topic is "Crash", show red arrows/fire.
-        
-        3. **OUTPUT PROMPT:**
-           - Write a highly detailed image generation prompt.
-           - Format: "A YouTube thumbnail... [Visuals of Trump]... [Background details]... TEXT TO RENDER: Top: '[Text]', Left: '[Text]', Right: '[Text]'"
-           - Include: "High quality, 8k, detailed, realistic skin texture."
-           - Constraint: "FULL BLEED 16:9 IMAGE. NO BLACK BORDERS. NO CAPTIONS AT THE BOTTOM. The image must fill the entire frame."
-        """
-        
-        # We try to use search tool config if possible
-        try:
-           response = model.generate_content(refine_prompt) 
-        except:
-           response = model.generate_content(refine_prompt)
+        response = model.generate_content(refine_prompt)
            
         if response.text:
             return response.text.strip()
@@ -315,6 +331,108 @@ def refine_prompt_with_grounding(prompt: str, topic: str, recipe: str = "") -> s
     except Exception as e:
         print(f"⚠️ Prompt refinement failed: {e}")
         return prompt
+
+
+def extract_key_figure_from_topic(topic: str) -> str:
+    """
+    Extract or generate a key money figure for the top headline.
+    Falls back to a generic punchy headline if no figure found.
+    """
+    import re
+    
+    # Look for money figures in topic
+    money_patterns = [
+        r'\$[\d,.]+\s*(?:trillion|billion|million|T|B|M)',  # $36 trillion
+        r'[\d,.]+\s*(?:trillion|billion|million)\s*(?:dollar)?',  # 36 trillion
+        r'\$[\d,.]+\s*[TBM]',  # $36T, $917B
+    ]
+    
+    for pattern in money_patterns:
+        match = re.search(pattern, topic, re.IGNORECASE)
+        if match:
+            return match.group(0).upper().replace('TRILLION', 'T').replace('BILLION', 'B').replace('MILLION', 'M')
+    
+    # Look for percentages
+    pct_match = re.search(r'(\d+(?:\.\d+)?)\s*%', topic)
+    if pct_match:
+        return f"{pct_match.group(1)}% DROP"
+    
+    # Look for years that might be significant
+    year_match = re.search(r'\b(202[4-9]|203\d)\b', topic)
+    if year_match:
+        return f"{year_match.group(1)} CRASH"
+    
+    # Default: extract first noun phrase as headline
+    # This is a fallback - ideally we use transcript-extracted figure
+    words = topic.split()[:4]
+    if len(words) >= 2:
+        return f"{words[0].upper()} {words[1].upper()}"
+    
+    return "IT'S OVER"
+
+
+def extract_key_figure_from_transcript(transcript: str, research: dict = None) -> str:
+    """
+    Extract the most important/recent money figure from transcript and research.
+    Prioritizes: recent news data > transcript figures > fallback
+    """
+    import re
+    
+    figures_found = []
+    
+    # Priority 1: Check research for recent news figures
+    if research:
+        recent_news = research.get("recent_news", [])
+        for article in recent_news[:5]:  # Top 5 most recent
+            content = article.get("content", "") + " " + article.get("snippet", "")
+            # Look for money figures
+            matches = re.findall(r'\$[\d,.]+\s*(?:trillion|billion|million|T|B|M)?', content, re.IGNORECASE)
+            for m in matches:
+                figures_found.append(("news", m.strip()))
+    
+    # Priority 2: Check transcript for money figures
+    if transcript:
+        # Look for large figures
+        matches = re.findall(r'\$[\d,.]+\s*(?:trillion|billion|million|T|B|M)?', transcript[:5000], re.IGNORECASE)
+        for m in matches:
+            figures_found.append(("transcript", m.strip()))
+    
+    # Deduplicate and prioritize by source and size
+    if figures_found:
+        # Prefer news over transcript, and larger numbers
+        def figure_score(item):
+            source, fig = item
+            source_score = 10 if source == "news" else 1
+            # Try to extract numeric value
+            num_match = re.search(r'[\d,.]+', fig)
+            if num_match:
+                try:
+                    num = float(num_match.group().replace(',', ''))
+                    # Adjust for scale
+                    if 'trillion' in fig.lower() or 'T' in fig:
+                        num *= 1000000
+                    elif 'billion' in fig.lower() or 'B' in fig:
+                        num *= 1000
+                    return source_score * num
+                except:
+                    pass
+            return source_score
+        
+        figures_found.sort(key=figure_score, reverse=True)
+        
+        # Format the best figure
+        best = figures_found[0][1]
+        # Normalize format
+        best = re.sub(r'trillion', 'T', best, flags=re.IGNORECASE)
+        best = re.sub(r'billion', 'B', best, flags=re.IGNORECASE)
+        best = re.sub(r'million', 'M', best, flags=re.IGNORECASE)
+        
+        # Add context word if just a number
+        if not any(word in best.upper() for word in ['LOSS', 'DEBT', 'CRASH', 'DROP', 'GONE']):
+            return f"{best.upper()} LOSS"
+        return best.upper()
+    
+    return None  # Caller should handle fallback
 
 def generate_thumbnail_with_gemini(
     topic: str,

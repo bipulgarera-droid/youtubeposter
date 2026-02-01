@@ -197,11 +197,25 @@ class ViralVideoPipeline:
             pass
     
     async def _generate_locked_thumbnail_early(self):
-        """Generate a thumbnail using the Locked Master Template (V5) immediately."""
+        """Generate a thumbnail using the Locked Master Template (V5) with key figure."""
         if self.bot:
             await self.send_message("⚡ Generating Thumbnail... (Using 'Trump Center' Template)")
         
         try:
+            # Import key figure extraction
+            from execution.generate_thumbnail import extract_key_figure_from_transcript
+            
+            # Extract key figure from transcript and research
+            transcript = self.state.get("transcript", "")
+            research = self.state.get("research", {})
+            key_figure = extract_key_figure_from_transcript(transcript, research)
+            
+            if key_figure:
+                await self.send_message(f"💰 Key Figure Extracted: `{key_figure}`")
+                self.state["key_figure"] = key_figure
+            else:
+                await self.send_message("⚠️ No key figure found, using topic-based headline")
+            
             # Use the title as the topic
             topic = self.state["title"]
             master_template_path = os.path.abspath("execution/assets/master_template.jpg")
@@ -256,6 +270,16 @@ class ViralVideoPipeline:
             genai.configure(api_key=os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
             model = genai.GenerativeModel('gemini-2.0-flash')
             
+            # Build key figure instruction if available
+            key_figure = self.state.get("key_figure")
+            key_figure_instruction = ""
+            if key_figure:
+                key_figure_instruction = f"""
+6. **KEY FIGURE REQUIREMENT:** Include this money figure organically in AT LEAST 3 titles: "{key_figure}"
+   - Work it INTO the title naturally (e.g., "The {key_figure} Crisis Nobody Predicted")
+   - DO NOT tack it on at the end like "(${key_figure})" — make it feel like news
+"""
+            
             prompt = f"""You are a YouTube title expert. Generate 5 paraphrased versions of this title.
 
 ORIGINAL TITLE: "{original_title}"
@@ -266,6 +290,7 @@ PARAPHRASING RULES:
 3. The bracketed part should be a RESTRUCTURED piece of the original, not something new
 4. Keep all numbers, emotional hooks, and core topic intact
 5. Each option should feel natural, not forced
+{key_figure_instruction}
 
 EXAMPLES:
 - Original: "China Just Dumped $688 Billion in U.S. Debt at a Record Loss"
