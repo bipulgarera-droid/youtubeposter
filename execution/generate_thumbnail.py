@@ -274,8 +274,9 @@ OBJECTIVE: Create a prompt for a NEW thumbnail about "{topic}" following the LOC
 - TEXT: "{top_text}" (This is MANDATORY - use this exact text)
 - FONT: Bold Impact or similar, ALL CAPS
 - COLOR: Bright Yellow (#FFD700) with thin red outline/shadow
-- POSITION: Top center of image, spanning full width
+- POSITION: Top center of image, ABOVE Trump's head (NOT overlapping his face)
 - SIZE: Very large, about 15% of image height
+- CRITICAL: Text must be in the top 20% of image, leaving space for Trump below
 
 **LEFT TEXT BOX (LOCKED SIZE):**
 - SIZE: Approximately 130px wide x 65px tall (aspect ratio 2:1)
@@ -343,38 +344,43 @@ Write a detailed image generation prompt that:
 
 def extract_key_figure_from_topic(topic: str) -> str:
     """
-    Extract or generate a key money figure for the top headline.
-    Falls back to a generic punchy headline if no figure found.
+    Extract a key money figure for the top headline.
+    KEEP FULL WORDS (BILLION not B) - abbreviations look bad.
     """
     import re
     
-    # Look for money figures in topic
-    money_patterns = [
-        r'\$[\d,.]+\s*(?:trillion|billion|million|T|B|M)',  # $36 trillion
-        r'[\d,.]+\s*(?:trillion|billion|million)\s*(?:dollar)?',  # 36 trillion
-        r'\$[\d,.]+\s*[TBM]',  # $36T, $917B
-    ]
+    # Look for money figures with full words - KEEP the full word
+    money_match = re.search(r'\$[\d,.]+\s*(trillion|billion|million)', topic, re.IGNORECASE)
+    if money_match:
+        figure = money_match.group(0).upper()
+        # Add context word based on topic
+        if any(word in topic.lower() for word in ['loss', 'lost', 'lose', 'losing']):
+            return f"{figure} LOSS"
+        elif any(word in topic.lower() for word in ['crash', 'collapse', 'crisis']):
+            return f"{figure} CRASH"
+        elif any(word in topic.lower() for word in ['deal', 'trade', 'ended', 'killed']):
+            return f"{figure} LOSS"  # "LOSS" works well for deal endings
+        else:
+            return f"{figure} LOSS"  # Default to LOSS - it's punchy
     
-    for pattern in money_patterns:
-        match = re.search(pattern, topic, re.IGNORECASE)
-        if match:
-            return match.group(0).upper().replace('TRILLION', 'T').replace('BILLION', 'B').replace('MILLION', 'M')
+    # Look for just dollar amounts
+    dollar_match = re.search(r'\$[\d,.]+', topic)
+    if dollar_match:
+        return f"{dollar_match.group(0).upper()} LOSS"
     
     # Look for percentages
     pct_match = re.search(r'(\d+(?:\.\d+)?)\s*%', topic)
     if pct_match:
-        return f"{pct_match.group(1)}% DROP"
+        return f"{pct_match.group(1)}% CRASH"
     
-    # Look for years that might be significant
-    year_match = re.search(r'\b(202[4-9]|203\d)\b', topic)
-    if year_match:
-        return f"{year_match.group(1)} CRASH"
-    
-    # Default: extract first noun phrase as headline
-    # This is a fallback - ideally we use transcript-extracted figure
-    words = topic.split()[:4]
-    if len(words) >= 2:
-        return f"{words[0].upper()} {words[1].upper()}"
+    # Fallback: use topic keywords
+    topic_upper = topic.upper()
+    if 'CRASH' in topic_upper:
+        return "TOTAL CRASH"
+    if 'COLLAPSE' in topic_upper:
+        return "IT'S OVER"
+    if 'WAR' in topic_upper:
+        return "ALL OUT WAR"
     
     return "IT'S OVER"
 
