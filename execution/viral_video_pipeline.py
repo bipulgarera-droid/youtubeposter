@@ -1289,6 +1289,18 @@ Return ONLY the paraphrased description, nothing else."""
             await self.send_message("❌ No video found to upload.")
             return
         
+        # SAFETY: Validate title is not empty (state can be corrupted after restart)
+        title = self.state.get("title", "").strip()
+        if not title:
+            # Try fallbacks
+            title = self.state.get("paraphrased_title", "").strip()
+            if not title:
+                title = self.state.get("original", {}).get("title", "").strip()
+            if not title:
+                title = f"Video Upload {self.video_id}"
+            self.state["title"] = title
+            await self.send_message(f"⚠️ Title was missing, using: `{title}`")
+        
         try:
             # SKIP SRT caption upload - it has been causing hangs
             # The video already has burned-in subtitles, so we don't need SRT separately
