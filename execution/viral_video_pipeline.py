@@ -1290,26 +1290,16 @@ Return ONLY the paraphrased description, nothing else."""
             return
         
         try:
-            # Use upload_video_with_captions if SRT available
-            # Note: Removed category_id arg as it caused issues on some deployments (defaults to 22 anyway)
-            if srt_path and os.path.exists(srt_path):
-                await self.send_message("📝 Uploading with SRT captions...")
-                result = upload_video_with_captions(
-                    video_path=video_to_upload,
-                    title=self.state["title"],
-                    description=self.state["description"],
-                    tags=self.state["tags"],
-                    thumbnail_path=self.state.get("thumbnail_path"),
-                    srt_path=srt_path
-                )
-            else:
-                result = upload_video(
-                    video_path=video_to_upload,
-                    title=self.state["title"],
-                    description=self.state["description"],
-                    tags=self.state["tags"],
-                    thumbnail_path=self.state.get("thumbnail_path")
-                )
+            # SKIP SRT caption upload - it has been causing hangs
+            # The video already has burned-in subtitles, so we don't need SRT separately
+            await self.send_message("📤 Uploading video (subtitles already burned in)...")
+            result = upload_video(
+                video_path=video_to_upload,
+                title=self.state["title"],
+                description=self.state["description"],
+                tags=self.state["tags"],
+                thumbnail_path=self.state.get("thumbnail_path")
+            )
         except TypeError as e:
             # Fallback if arguments mismatch persists
             await self.send_message(f"⚠️ Upload argument error: {e}. Trying simple upload...")
